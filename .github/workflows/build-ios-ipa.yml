@@ -1,0 +1,46 @@
+name: Build iPhone IPA (no Mac required)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'iPhone/**'
+      - 'scripts/build-unsigned-ipa.sh'
+      - '.github/workflows/build-ios-ipa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unsigned-ipa:
+    name: Build unsigned iPhone app for Windows sideloading
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          xcodebuild -list -project iPhone/iPhoneBLECamera.xcodeproj
+
+      - name: Compile iPhone app and create unsigned IPA
+        run: bash scripts/build-unsigned-ipa.sh
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-build-log
+          path: output/xcodebuild.log
+          if-no-files-found: ignore
+
+      - name: Upload iPhone IPA file
+        uses: actions/upload-artifact@v4
+        with:
+          name: iPhoneBLECamera-unsigned-IPA
+          path: output/iPhoneBLECamera-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14

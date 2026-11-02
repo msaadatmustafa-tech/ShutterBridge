@@ -1,0 +1,4 @@
+# BLE command protocol v2
+Service/command/status UUIDs are defined in both clients. Commands are ASCII writes with response (no newline), at most 64 bytes. Subscribe before AUTH:123456. Commands: START, STOP, STATUS, CAM:BACK, CAM:FRONT, MODE:4K60 (also 4K30/1080P60/1080P30/720P60/720P30), ZOOM:1 through ZOOM:5.
+Status notifications are UTF-8 newline-delimited messages fragmented at the central MTU. Windows reassembles before parsing. Both apps must be upgraded together. GATT write success is transport acknowledgement; OK/ERR messages report application outcomes. REC:1 confirms recording; OK:STARTING alone does not.
+The PIN is an application access gate, not encrypted Bluetooth pairing. Use only in a trusted nearby environment. Foreground loss revokes authorization. Reconnect and authenticate again. Video never travels over BLE.

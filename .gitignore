@@ -1,0 +1,22 @@
+# Generated files and local configuration
+.venv/
+__pycache__/
+*.py[cod]
+build/
+dist/
+*.spec
+.ios-derived-data/
+output/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+.env
+.env.*
+*.p12
+*.p8
+*.mobileprovision
+*.pem
+*.key
+*.ipa
+*.exe
