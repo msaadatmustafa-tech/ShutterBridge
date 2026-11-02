@@ -157,7 +157,8 @@
                 ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
                 CODE_SIGN_STYLE = Automatic;
                 CURRENT_PROJECT_VERSION = 1;
-                GENERATE_INFOPLIST_FILE = YES;
+                GENERATE_INFOPLIST_FILE = NO;
+                INFOPLIST_FILE = iPhoneBLECamera/Info.plist;
                 INFOPLIST_KEY_CFBundleDisplayName = "iPhone BLE Camera";
                 INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Allow Bluetooth to control recording from your laptop.";
                 INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to record video on this iPhone.";
@@ -188,7 +189,8 @@
                 ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
                 CODE_SIGN_STYLE = Automatic;
                 CURRENT_PROJECT_VERSION = 1;
-                GENERATE_INFOPLIST_FILE = YES;
+                GENERATE_INFOPLIST_FILE = NO;
+                INFOPLIST_FILE = iPhoneBLECamera/Info.plist;
                 INFOPLIST_KEY_CFBundleDisplayName = "iPhone BLE Camera";
                 INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Allow Bluetooth to control recording from your laptop.";
                 INFOPLIST_KEY_NSCameraUsageDescription = "Camera access is needed to record video on this iPhone.";
