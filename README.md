@@ -1,3 +1,7 @@
+# Current verification
+
+Private GitHub publication completed. Windows: six mocked controller tests, dependency check, GUI smoke test, EXE build and real BLE scan passed. Corrected Xcode 16.4 / iOS 18.5 arm64 build b38d8a6 passed; downloaded IPA and Files/USB sharing keys verified. Initial iPhone installation and recording remain untested because no USB cable is available. See VERIFICATION_AND_INSTALL.md for current results; older prototype notes below describe the original package.
+
 # iPhone 4K BLE Camera Remote (local project)
 
 **What this does:** A Windows laptop sends Bluetooth Low Energy (BLE) commands to a small iPhone recording app. The iPhone captures the video locally, with its own camera and microphone. It supports 4K, 1080p and 720p formats and 30/60 FPS **only when that specific iPhone camera supports each mode**.

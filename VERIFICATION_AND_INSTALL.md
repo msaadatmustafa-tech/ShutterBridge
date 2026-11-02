@@ -7,8 +7,13 @@ Project was edited directly in the extracted Downloads/iPhone-BLE-Camera-Remote-
 - Six mocked controller tests passed: fragmented/coalesced status, auth rejection, stale disconnect, authorized and unauthorized writes, oversized input.
 - Tk GUI startup and close passed.
 - PyInstaller 6.22.3 EXE build passed; EXE process stayed alive after four seconds. Packager reports optional non-Windows backend imports; actual BLE connection remains untested.
-- Real BLE scan attempted: FAILED because Windows reported Bluetooth radio POWERED_OFF. No connection or recording has been verified.
-- Swift, Xcode and IPA must still be compiled and tested on GitHub Actions; Windows cannot validate Apple frameworks.
+- Initial BLE scan failed with radio POWERED_OFF. After Bluetooth was enabled, a real 5-second scan passed and found 3 BLE devices, zero camera services. No iPhone connection or recording has been verified.
+- Private repository published: https://github.com/msaadatmustafa-tech/iPhone-BLE-Camera-Remote
+- Corrected iOS build b38d8a6 passed on GitHub Actions (Xcode 16.4, iOS 18.5 SDK, arm64): https://github.com/msaadatmustafa-tech/iPhone-BLE-Camera-Remote/actions/runs/41510583811
+- Downloaded IPA CRC and arm64 executable verified. Camera, microphone, Bluetooth descriptions and Files/USB sharing verified in packaged Info.plist. SHA256: 25b6193ea269f155e7a3dbaf20e7ec6d88bbd830c1853e1ce25a7d0fa8058c2a.
+- Compiler log confirms BUILD SUCCEEDED. GitHub warns that v4 actions use deprecated Node 20 and are forced to Node 24; build succeeds. No iPhone runtime tests completed.
+- Sideloadly installer downloaded from official sideloadly.io. It is not Authenticode signed; installation was not completed. Apple ID, trust/permission prompts and initial USB connection remain user steps.
+- User has Bluetooth enabled but no USB cable available. Initial Sideloadly installation and physical camera verification are blocked until a cable is available.
 
 ## Publish and build (approval required)
 Git is initialized locally. A local Git repository has no private/public setting; GitHub visibility is set on publication.
