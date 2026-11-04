@@ -386,6 +386,18 @@ class CameraRemoteApp(tk.Tk):
         self.preview_label = tk.Label(parent, bg="#050a12", fg="white", text="Live camera will appear here",
                                      font=("Segoe UI", 14))
         self.preview_label.pack(fill="both", expand=True)
+        live_controls = tk.Frame(parent, bg=COLORS["panel"])
+        live_controls.pack(fill="x", pady=(10, 0))
+        for column, (label, command) in enumerate((("Start", "START"), ("Stop & Save", "STOP"),
+                ("Back", "CAM:BACK"), ("Front", "CAM:FRONT"), ("1×", "ZOOM:1"), ("2×", "ZOOM:2"))):
+            live_controls.columnconfigure(column, weight=1)
+            self._button(live_controls, label, lambda c=command: self._command(c)).grid(
+                row=0, column=column, sticky="ew", padx=2)
+        live_quality = tk.Frame(parent, bg=COLORS["panel"])
+        live_quality.pack(fill="x", pady=(8, 0))
+        ttk.Combobox(live_quality, textvariable=self.mode_var, state="readonly", width=14,
+            values=("4K60", "4K30", "1080P60", "1080P30", "720P60", "720P30")).pack(side="left", ipady=7)
+        self._button(live_quality, "Apply quality", self._mode).pack(side="left", padx=8)
         self._label(parent, "Android: open the same link in Chrome. Enable Wi-Fi remote controls on iPhone.", 10, COLORS["muted"]).pack(anchor="w", pady=(10, 0))
 
     def _start_preview(self):

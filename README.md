@@ -1,3 +1,7 @@
+# Version 1.3: Wi-Fi preview and Android remote
+
+See [Wi-Fi and Android setup](WIFI_ANDROID_SETUP.md) for the latest features, installation and actual test limits. Windows BLE controls remain available; optional local Wi-Fi now carries live preview and, only when explicitly enabled on iPhone, browser remote commands. Older prototype notes below describe earlier releases.
+
 # Current verification
 
 Private GitHub publication completed. Windows: six mocked controller tests, dependency check, GUI smoke test, EXE build and real BLE scan passed. Corrected Xcode 16.4 / iOS 18.5 arm64 build b38d8a6 passed; downloaded IPA and Files/USB sharing keys verified. Initial iPhone installation and recording remain untested because no USB cable is available. See VERIFICATION_AND_INSTALL.md for current results; older prototype notes below describe the original package.
