@@ -60,17 +60,18 @@ struct ContentView: View {
                         Button("START RECORDING") { camera.execute("START") { bluetooth.send($0) } }
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .background(.red, in: RoundedRectangle(cornerRadius: 12))
-                            .disabled(!camera.isReady || camera.isRecording)
+                            .disabled(!camera.isReady || camera.isBusy || camera.isRecording)
                         Button("STOP & SAVE") { camera.execute("STOP") { bluetooth.send($0) } }
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .background(.gray.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
-                            .disabled(!camera.isRecording)
+                            .disabled(!camera.isBusy && !camera.isRecording)
                     }
                     .buttonStyle(.plain).font(.headline)
                     VStack(alignment: .leading, spacing: 8) {
                         Label("RECORDINGS", systemImage: "photo.on.rectangle")
                             .font(.headline)
                         Text(camera.photosStatus).font(.subheadline)
+                        Text(camera.lastClipDetails).font(.subheadline).textSelection(.enabled)
                         Text("Latest: \(camera.lastFile)").font(.caption).textSelection(.enabled)
                         Button("Save existing Files recordings to Photos") { camera.importExistingRecordings() }
                             .buttonStyle(.bordered).disabled(camera.isRecording)
@@ -141,11 +142,11 @@ struct ContentView: View {
                             Button("START") { camera.execute("START") { bluetooth.send($0) } }
                                 .frame(maxWidth: .infinity, minHeight: 56)
                                 .background(.red, in: RoundedRectangle(cornerRadius: 12))
-                                .disabled(!camera.isReady || camera.isRecording)
+                                .disabled(!camera.isReady || camera.isBusy || camera.isRecording)
                             Button("STOP & SAVE") { camera.execute("STOP") { bluetooth.send($0) } }
                                 .frame(maxWidth: .infinity, minHeight: 56)
                                 .background(.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
-                                .disabled(!camera.isRecording)
+                                .disabled(!camera.isBusy && !camera.isRecording)
                         }
                         .buttonStyle(.plain).font(.headline)
                         if !camera.isRecording {

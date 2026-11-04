@@ -18,6 +18,10 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     @Published private(set) var currentMode = "1080P30"
     @Published private(set) var cameraSide = "BACK"
     @Published private(set) var availableModes: [String] = []
+    @Published private(set) var isBusy = false
+    @Published private(set) var lastClipDetails = "No clip metadata verified yet"
+    private var lastClipReport = "NONE"
+    private var stopRequested = false
     @Published private(set) var lastFile = "No recording yet"
 
     @Published private(set) var photosStatus = "Photos access will be requested when saving a clip"
@@ -153,7 +157,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
                     }
                     self.execute(command) { response in
                         if command == "STATUS" {
-                            reply(response + ";SAVE=" + self.photosStatus)
+                            reply(response + ";REMOTE=" + (self.wifiRemoteEnabled ? "1" : "0") + ";SAVE=" + self.photosStatus)
                         } else { reply(response) }
                     }
                 }
@@ -294,6 +298,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
             // No app-imposed duration limit. The recording is still limited by
             // disk space, power, temperature, and iOS system behavior.
             movieOutput.maxRecordedDuration = .invalid
+            activeMode = preferred
             configured = true
             if foreground { session.startRunning() }
             started = session.isRunning
@@ -314,29 +319,56 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     }
 
     private func findFormat(on device: AVCaptureDevice, for mode: VideoMode) -> AVCaptureDevice.Format? {
-        return device.formats.first { format in
+        let candidates = device.formats.filter { format in
             let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-            guard dimensions.width == mode.width && dimensions.height == mode.height else { return false }
-            return format.videoSupportedFrameRateRanges.contains { frameRateRange in
-                frameRateRange.minFrameRate <= Double(mode.framesPerSecond) + 0.01 &&
-                frameRateRange.maxFrameRate >= Double(mode.framesPerSecond) - 0.01
-            }
+            return dimensions.width == mode.width && dimensions.height == mode.height &&
+                format.videoSupportedFrameRateRanges.contains {
+                    $0.minFrameRate <= Double(mode.framesPerSecond) && $0.maxFrameRate >= Double(mode.framesPerSecond)
+                }
         }
+        // Prefer standard 8-bit video formats for simultaneous movie + Wi-Fi preview.
+        return candidates.first {
+            let subtype = CMFormatDescriptionGetMediaSubType($0.formatDescription)
+            return subtype == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
+                   subtype == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        } ?? candidates.first
     }
 
     @discardableResult
     private func applyModeInternal(_ name: String, device: AVCaptureDevice) -> Bool {
-        guard let mode = modes.first(where: { $0.name == name }),
+        guard !movieOutput.isRecording,
+              let mode = modes.first(where: { $0.name == name }),
               let format = findFormat(on: device, for: mode) else { return false }
+        session.beginConfiguration()
         do {
             try device.lockForConfiguration()
+            session.sessionPreset = .inputPriority
             device.activeFormat = format
-            let frameDuration = CMTime(value: 1, timescale: mode.framesPerSecond)
-            device.activeVideoMinFrameDuration = frameDuration
-            device.activeVideoMaxFrameDuration = frameDuration
+            let duration = CMTime(value: 1, timescale: mode.framesPerSecond)
+            device.activeVideoMinFrameDuration = duration
+            device.activeVideoMaxFrameDuration = duration
+            if device.activeFormat.isVideoHDRSupported {
+                device.automaticallyAdjustsVideoHDREnabled = false
+                device.isVideoHDREnabled = false
+            }
+            device.videoZoomFactor = max(device.minAvailableVideoZoomFactor,
+                min(device.videoZoomFactor, device.maxAvailableVideoZoomFactor))
             device.unlockForConfiguration()
-            return true
+            session.commitConfiguration()
+            if let connection = movieOutput.connection(with: .video) {
+                let codecs = movieOutput.availableVideoCodecTypes
+                if codecs.contains(.hevc) {
+                    movieOutput.setOutputSettings([AVVideoCodecKey: AVVideoCodecType.hevc.rawValue], for: connection)
+                } else if codecs.contains(.h264) {
+                    movieOutput.setOutputSettings([AVVideoCodecKey: AVVideoCodecType.h264.rawValue], for: connection)
+                }
+            }
+            let actual = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+            let fps = 1 / CMTimeGetSeconds(device.activeVideoMinFrameDuration)
+            return actual.width == mode.width && actual.height == mode.height &&
+                fps.isFinite && abs(fps - Double(mode.framesPerSecond)) < 0.1
         } catch {
+            session.commitConfiguration()
             return false
         }
     }
@@ -353,12 +385,26 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         if command == "STATUS" {
             let active = movieOutput.isRecording ? "1" : "0"
             let readiness = started ? "1" : "0"
-            return "STATUS:READY=\(readiness);REC=\(active);MODE=\(activeMode);CAM=\(activeSide)"
+            let camera = videoInput?.device
+            let dimensions = camera.map { CMVideoFormatDescriptionGetDimensions($0.activeFormat.formatDescription) }
+            let fps = camera.map { 1 / CMTimeGetSeconds($0.activeVideoMinFrameDuration) } ?? 0
+            let actualName = modes.first { mode in
+                dimensions?.width == mode.width && dimensions?.height == mode.height &&
+                fps.isFinite && abs(fps - Double(mode.framesPerSecond)) < 0.1
+            }?.name ?? "CUSTOM"
+            let zoom = camera.map { Double($0.videoZoomFactor) } ?? 1
+            let caps = camera.map { supportedModes(for: $0).joined(separator: ",") } ?? ""
+            return "STATUS:READY=\(readiness);REC=\(active);BUSY=\(recordingPending ? 1 : 0);MODE=\(actualName);CAM=\(activeSide);CAPS=\(caps);WIDTH=\(dimensions?.width ?? 0);HEIGHT=\(dimensions?.height ?? 0);FPS=\(String(format: "%.2f", fps));ZOOM=\(String(format: "%.1f", zoom));LAST=\(lastClipReport)"
         }
         guard foreground else { return "ERR:FOREGROUND_REQUIRED" }
         guard configured, started, session.isRunning else { return "ERR:CAMERA_NOT_READY" }
         if command == "START" {
             guard !movieOutput.isRecording, !recordingPending else { return "ERR:ALREADY_RECORDING" }
+            guard let device = videoInput?.device, applyModeInternal(activeMode, device: device) else {
+                return "ERR:MODE_APPLY_FAILED"
+            }
+            stopRequested = false
+            DispatchQueue.main.async { self.isBusy = true }
             let fileURL = nextOutputURL()
             if let connection = movieOutput.connection(with: .video), connection.isVideoOrientationSupported {
                 // Portrait default. Landscape clips can be created by rotating the device
@@ -378,15 +424,19 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
             return "OK:STARTING"
         }
         if command == "STOP" {
-            guard movieOutput.isRecording else { return "ERR:NOT_RECORDING" }
-            movieOutput.stopRecording()
+            guard movieOutput.isRecording || recordingPending else { return "ERR:NOT_RECORDING" }
+            stopRequested = true
+            if movieOutput.isRecording { movieOutput.stopRecording() }
             return "OK:STOPPING"
         }
         if (movieOutput.isRecording || recordingPending) && !command.hasPrefix("ZOOM:") { return "ERR:STOP_RECORDING_FIRST" }
         if command.hasPrefix("MODE:") {
             let requested = String(command.dropFirst("MODE:".count))
             guard let camera = videoInput?.device else { return "ERR:NO_CAMERA" }
-            guard applyModeInternal(requested, device: camera) else { return "ERR:UNSUPPORTED_MODE" }
+            guard modes.contains(where: { $0.name == requested }), supportedModes(for: camera).contains(requested) else {
+                return "ERR:UNSUPPORTED_MODE"
+            }
+            guard applyModeInternal(requested, device: camera) else { return "ERR:MODE_APPLY_FAILED" }
             activeMode = requested
             DispatchQueue.main.async { self.currentMode = requested }
             return "OK:MODE:\(requested)"
@@ -467,6 +517,9 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     func fileOutput(_ output: AVCaptureFileOutput,
                     didStartRecordingTo fileURL: URL,
                     from connections: [AVCaptureConnection]) {
+        captureQueue.async {
+            if self.stopRequested || !self.foreground { self.movieOutput.stopRecording() }
+        }
         DispatchQueue.main.async {
             self.recordingStartedAt = Date()
             self.isRecording = true
@@ -483,6 +536,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
         DispatchQueue.main.async {
             self.recordingStartedAt = nil
             self.isRecording = false
+            self.isBusy = false
             self.onCameraEvent?("REC:0")
             if let error = error, !((error as NSError).userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool ?? false) {
                 self.cameraStatus = "Recording ended with an error: \(error.localizedDescription)"
@@ -492,7 +546,30 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
                 self.cameraStatus = "Saved to Files > On My iPhone > iPhone BLE Camera"
                 self.onCameraEvent?("REC:0")
                 self.onCameraEvent?("OK:SAVED")
+                self.inspectSavedClip(outputFileURL)
                 self.saveToPhotos(outputFileURL)
+            }
+        }
+    }
+
+    private func inspectSavedClip(_ url: URL) {
+        Task {
+            do {
+                let asset = AVURLAsset(url: url)
+                guard let track = try await asset.loadTracks(withMediaType: .video).first else { return }
+                let size = try await track.load(.naturalSize)
+                let fps = try await track.load(.nominalFrameRate)
+                let duration = try await asset.load(.duration)
+                let width = Int(max(size.width, size.height))
+                let height = Int(min(size.width, size.height))
+                let report = "\(width)x\(height)@\(String(format: "%.2f", fps))fps"
+                self.captureQueue.async { self.lastClipReport = report }
+                DispatchQueue.main.async {
+                    self.lastClipDetails = "Verified file: \(width) × \(height) · \(String(format: "%.2f", fps)) FPS · \(String(format: "%.1f", CMTimeGetSeconds(duration))) s"
+                    self.onCameraEvent?("CLIP:" + report)
+                }
+            } catch {
+                DispatchQueue.main.async { self.lastClipDetails = "File saved; metadata check failed: \(error.localizedDescription)" }
             }
         }
     }
@@ -662,18 +739,44 @@ final class LocalCameraServer {
 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>iPhone Camera Remote</title>
 <style>:root{color-scheme:dark;font:16px system-ui;background:#101827;color:#f0f5fb}body{max-width:900px;margin:auto;padding:16px}h1{font-size:24px}img{display:block;width:100%;height:50vh;object-fit:contain;background:#050a12;border-radius:16px}section{background:#192539;border-radius:16px;padding:16px;margin:16px 0}.row{display:flex;gap:12px;flex-wrap:wrap}button,select{font:inherit;min-height:48px;border:1px solid #52647a;border-radius:9px;padding:12px;background:#31445f;color:white;flex:1}button:disabled{opacity:.45}.start{background:#aa2741}.stop{background:#245b48}#status,#save{min-height:24px;overflow-wrap:anywhere}small{color:#b6c3d3}#elapsed{font:32px monospace}.error{color:#ffb2bf}</style>
 <h1>iPhone Camera Remote</h1><small>Local Wi-Fi preview • Full-quality video saves on iPhone</small>
-<section><img id="preview" alt="Live camera preview"><p id="connection" role="status">Connecting to iPhone…</p><div id="elapsed">00:00:00</div><p id="status" role="status">Waiting for camera status</p><p id="save" role="status"></p></section>
-<section><div class="row"><button class="start" id="start">START RECORDING</button><button class="stop" id="stop">STOP &amp; SAVE</button></div><p><label for="mode">Recording quality</label></p><div class="row"><select id="mode"><option>1080P30</option><option>1080P60</option><option>4K30</option><option>4K60</option><option>720P30</option><option>720P60</option></select><button id="apply">Apply quality</button></div><p>Camera &amp; zoom</p><div class="row"><button id="back">Back</button><button id="front">Front</button><button id="one">1×</button><button id="two">2×</button></div></section>
+<section><img id="preview" alt="Live camera preview"><p id="connection" role="status">Connecting to iPhone…</p><div id="elapsed">00:00:00</div><p id="confirmed" role="status">Waiting for confirmed recording quality</p><p id="remote"></p><p id="clip"></p><p id="feedback" role="status"></p><p id="status" role="status">Waiting for camera status</p><p id="save" role="status"></p></section>
+<section><div class="row"><button class="start" id="start">START RECORDING</button><button class="stop" id="stop">STOP &amp; SAVE</button></div><p><label for="mode">Recording quality (stop recording, select, then Apply)</label></p><div class="row"><select id="mode"><option>1080P30</option><option>1080P60</option><option>4K30</option><option>4K60</option><option>720P30</option><option>720P60</option></select><button id="apply">Apply quality</button></div><p>Camera &amp; zoom</p><div class="row"><button id="back">Back</button><button id="front">Front</button><button id="one">1×</button><button id="two">2×</button></div></section>
 <small>Enable “Allow Wi-Fi remote controls” in the iPhone app. Keep the app open and phone unlocked. No microphone audio is sent in this framing preview. The elapsed timer starts when this browser observes recording.</small>
 <script>
 const key=new URLSearchParams(location.search).get('key');
-const $=id=>document.getElementById(id);let busy=false,started=null,previousURL=null;
+const $=id=>document.getElementById(id);let busy=false,started=null,previousURL=null,modeDirty=false,lastCaps='';
 const request=(path,options={})=>fetch(path+'?key='+encodeURIComponent(key),{...options,cache:'no-store',referrerPolicy:'no-referrer'});
-function showStatus(s){$('status').textContent=s;const rec=s.includes('REC=1');if(rec&&!started)started=Date.now();if(!rec)started=null;$('start').disabled=rec;$('apply').disabled=rec;$('front').disabled=rec;$('back').disabled=rec;const mode=s.match(/MODE=([^;]+)/);if(mode)$('mode').value=mode[1];const save=s.match(/;SAVE=(.*)$/);if(save)$('save').textContent=save[1];}
-async function command(c){if(busy)return;busy=true;try{const r=await request('/command',{method:'POST',headers:{'Content-Type':'text/plain'},body:c});const s=await r.text();$('save').textContent=s.startsWith('ERR:WIFI_REMOTE_DISABLED')?'Enable Wi-Fi remote controls on the iPhone.':s; if(!r.ok)throw Error('Connection denied; reopen current link from iPhone');}catch(e){$('save').textContent=e.message;}finally{busy=false;}}
+$('mode').onchange=()=>{modeDirty=true;};
+function showStatus(s){
+ const f=Object.fromEntries(s.replace(/^STATUS:/,'').split(';').map(x=>{const p=x.indexOf('=');return p<0?[x,'']:[x.slice(0,p),x.slice(p+1)];}));
+ const rec=f.REC==='1',deviceBusy=f.BUSY==='1',remote=f.REMOTE!=='0',ready=f.READY==='1';
+ if(rec&&!started)started=Date.now();if(!rec)started=null;
+ $('status').textContent=(rec?'RECORDING':deviceBusy?'STARTING / SAVING':'READY')+' · '+f.CAM+' · Zoom '+(f.ZOOM||'1')+'×';
+ $('confirmed').textContent='Confirmed recording: '+f.MODE+' · '+(f.WIDTH||'?')+' × '+(f.HEIGHT||'?')+' · '+(f.FPS||'?')+' FPS';
+ if(f.CAPS && f.CAPS!==lastCaps){
+  const selected=$('mode').value;lastCaps=f.CAPS;const modes=f.CAPS.split(',');$('mode').replaceChildren(...modes.map(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;return o;}));
+  if(modeDirty&&modes.includes(selected))$('mode').value=selected;else{modeDirty=false;$('mode').value=f.MODE;}
+ }
+ if(!modeDirty && f.MODE)$('mode').value=f.MODE;
+ $('start').disabled=!ready||!remote||rec||deviceBusy||busy;
+ $('stop').disabled=!ready||!remote||(!rec&&!deviceBusy)||busy;
+ for(const id of ['apply','front','back','mode'])$(id).disabled=!ready||!remote||rec||deviceBusy||busy;
+ for(const id of ['one','two'])$(id).disabled=!ready||!remote||busy;
+ if(f.SAVE)$('save').textContent=f.SAVE;
+ $('clip').textContent=f.LAST&&f.LAST!=='NONE'?'Verified saved file: '+f.LAST:'Saved clip dimensions/FPS will appear after recording';
+ $('remote').textContent=remote?'Wi-Fi remote controls enabled':'Preview only: enable Allow Wi-Fi remote controls on the iPhone';
+}
+function explain(s){const errors={'ERR:STOP_RECORDING_FIRST':'Stop & Save first, then wait for saving to finish before changing quality/camera.','ERR:UNSUPPORTED_MODE':'This camera does not support that mode. Choose a supported quality.','ERR:MODE_APPLY_FAILED':'iPhone could not apply that format/FPS. Check confirmed quality and retry while idle.','ERR:WIFI_REMOTE_DISABLED':'Enable Wi-Fi remote controls on the iPhone.','ERR:FOREGROUND_REQUIRED':'Keep iPhone BLE Camera open and phone unlocked.'};return errors[s]||s;}
+async function command(c){if(busy)return;busy=true;$('feedback').textContent='Sending '+c+'…';try{
+ const r=await request('/command',{method:'POST',headers:{'Content-Type':'text/plain'},body:c});const s=await r.text();
+ if(!r.ok)throw Error('Connection denied; reopen current link from iPhone');
+ if(c.startsWith('MODE:')&&s.startsWith('OK:MODE:')){modeDirty=false;$('mode').value=s.slice(8);}
+ if(c.startsWith('CAM:')&&s.startsWith('OK:CAM:'))modeDirty=false;
+ $('feedback').textContent=explain(s);
+}catch(e){$('feedback').textContent=e.message;}finally{busy=false;}}
 $('start').onclick=()=>command('START');$('stop').onclick=()=>command('STOP');$('apply').onclick=()=>command('MODE:'+$('mode').value);$('back').onclick=()=>command('CAM:BACK');$('front').onclick=()=>command('CAM:FRONT');$('one').onclick=()=>command('ZOOM:1');$('two').onclick=()=>command('ZOOM:2');
-async function frame(){try{const r=await request('/frame');if(!r.ok)throw Error(r.status===503?'Waiting for camera frames…':'Preview link expired or access denied');const b=await r.blob();const u=URL.createObjectURL(b);$('preview').src=u;if(previousURL)URL.revokeObjectURL(previousURL);previousURL=u;$('connection').textContent='LIVE · local Wi-Fi framing preview';}catch(e){$('connection').textContent=e.message;$('preview').removeAttribute('src');}setTimeout(frame,200);}
-async function status(){try{const r=await request('/command',{method:'POST',headers:{'Content-Type':'text/plain'},body:'STATUS'});if(!r.ok)throw Error('Reconnect using the link shown on iPhone');showStatus(await r.text());}catch(e){$('status').textContent=e.message;started=null;$('start').disabled=true;}setTimeout(status,1000);}
+async function frame(){try{const r=await request('/frame');if(!r.ok)throw Error(r.status===503?'Waiting for camera frames…':'Preview link expired or access denied');const b=await r.blob();const u=URL.createObjectURL(b);$('preview').src=u;if(previousURL)URL.revokeObjectURL(previousURL);previousURL=u;$('connection').textContent='LIVE · 640px / up to 5 FPS framing preview (recording quality below)';}catch(e){$('connection').textContent=e.message;$('preview').removeAttribute('src');}setTimeout(frame,200);}
+async function status(){try{const r=await request('/command',{method:'POST',headers:{'Content-Type':'text/plain'},body:'STATUS'});if(!r.ok)throw Error('Reconnect using the link shown on iPhone');const text=await r.text();if(!text.startsWith('STATUS:'))throw Error(text);showStatus(text);}catch(e){$('status').textContent=e.message;started=null;for(const id of ['start','stop','apply','front','back','one','two'])$(id).disabled=true;}setTimeout(status,800);}
 setInterval(()=>{const n=started?Math.floor((Date.now()-started)/1000):0;$('elapsed').textContent=[Math.floor(n/3600),Math.floor(n/60)%60,n%60].map(v=>String(v).padStart(2,'0')).join(':');},250);frame();status();
 </script></html>
 

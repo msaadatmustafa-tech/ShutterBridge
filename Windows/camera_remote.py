@@ -214,6 +214,7 @@ class PreviewWorker:
             except queue.Full: pass
 
     def _run(self):
+        last_status = 0.0
         while not self.stopped.is_set():
             try:
                 request = urllib.request.Request(self.url, headers={"Cache-Control": "no-cache"})
@@ -224,6 +225,14 @@ class PreviewWorker:
                     if len(data) > 512 * 1024 or not data.startswith(b"\xff\xd8"):
                         raise ValueError("Invalid preview image")
                 self._put("frame", data)
+                if time.monotonic() - last_status >= 1:
+                    last_status = time.monotonic()
+                    command_url = self.url.replace("/frame?", "/command?", 1)
+                    status_request = urllib.request.Request(command_url, data=b"STATUS",
+                        headers={"Content-Type": "text/plain"}, method="POST")
+                    with self.opener.open(status_request, timeout=2) as status_response:
+                        status = status_response.read(4096).decode("utf-8")
+                    if status.startswith("STATUS:"): self._put("camera_status", status)
             except urllib.error.HTTPError as exc:
                 self._put("status", "Waiting for camera frames…" if exc.code == 503 else "Preview access denied. Copy a fresh link from iPhone.")
             except Exception:
@@ -253,6 +262,11 @@ class CameraRemoteApp(tk.Tk):
         self.recording_var = tk.StringVar(value="Not recording")
         self.info_var = tk.StringVar(value="Bluetooth = control only • Videos are saved on iPhone")
         self.recording_active = False
+        self.busy_recording = False
+        self.mode_dirty = False
+        self.live_buttons = []
+        self.confirmed_quality = tk.StringVar(value="Confirmed recording quality: waiting for iPhone")
+        self.clip_quality = tk.StringVar(value="Saved clip metadata: not checked yet")
         self.recording_since = None
         self.timer_var = tk.StringVar(value="00:00:00")
         self.save_var = tk.StringVar(value="Recordings stay on iPhone • Files backup + Photos with permission")
@@ -304,19 +318,19 @@ class CameraRemoteApp(tk.Tk):
         self._build_preview(live)
         self._label(main, "RECORDING DASHBOARD", 12, COLORS["muted"], True).pack(anchor="w")
         self.recording_label = tk.Label(main, textvariable=self.recording_var, anchor="w",
-            font=("Segoe UI", 23, "bold"), bg=COLORS["panel"], fg=COLORS["foreground"])
+            font=("Segoe UI", 20, "bold"), bg=COLORS["panel"], fg=COLORS["foreground"])
         self.recording_label.pack(fill="x", pady=(20, 4))
-        tk.Label(main, textvariable=self.timer_var, anchor="w", font=("Consolas", 54, "bold"),
+        tk.Label(main, textvariable=self.timer_var, anchor="w", font=("Consolas", 42, "bold"),
                  bg=COLORS["panel"], fg=COLORS["accent"]).pack(fill="x", pady=(0, 4))
         self._label(main, "Elapsed since recording was confirmed on this laptop", 10, COLORS["muted"]).pack(anchor="w")
         action = tk.Frame(main, bg=COLORS["panel"])
-        action.pack(fill="x", pady=24)
+        action.pack(fill="x", pady=14)
         action.columnconfigure((0, 1), weight=1)
         self.start_btn = self._button(action, "START RECORDING", lambda: self._command("START"), primary=True)
-        self.start_btn.configure(font=("Segoe UI", 14, "bold"), pady=20, bg="#b52c45")
+        self.start_btn.configure(font=("Segoe UI", 14, "bold"), pady=14, bg="#b52c45")
         self.start_btn.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.stop_btn = self._button(action, "STOP & SAVE", lambda: self._command("STOP"))
-        self.stop_btn.configure(font=("Segoe UI", 14, "bold"), pady=20)
+        self.stop_btn.configure(font=("Segoe UI", 14, "bold"), pady=14)
         self.stop_btn.grid(row=0, column=1, sticky="ew", padx=(8, 0))
         self._label(main, "CAMERA SETTINGS", 12, COLORS["muted"], True).pack(anchor="w")
         quality = tk.Frame(main, bg=COLORS["panel"])
@@ -324,9 +338,14 @@ class CameraRemoteApp(tk.Tk):
         self.mode_combo = ttk.Combobox(quality, textvariable=self.mode_var,
             values=("4K60", "4K30", "1080P60", "1080P30", "720P60", "720P30"), state="readonly", width=14,
             font=("Segoe UI", 12))
+        self.mode_combo.bind("<<ComboboxSelected>>", lambda _event: setattr(self, "mode_dirty", True))
         self.mode_combo.pack(side="left", ipady=7)
         self.apply_btn = self._button(quality, "Apply quality", self._mode)
         self.apply_btn.pack(side="left", padx=12)
+        tk.Label(main, textvariable=self.confirmed_quality, bg=COLORS["panel"], fg=COLORS["accent"],
+            font=("Segoe UI", 11, "bold"), anchor="w", wraplength=600).pack(fill="x", pady=(0, 8))
+        tk.Label(main, textvariable=self.clip_quality, bg=COLORS["panel"], fg=COLORS["muted"],
+            font=("Segoe UI", 10), anchor="w", wraplength=600).pack(fill="x", pady=(0, 8))
         settings = tk.Frame(main, bg=COLORS["panel"])
         settings.pack(fill="x")
         self.back_btn = self._button(settings, "Back camera", lambda: self._command("CAM:BACK"))
@@ -391,13 +410,21 @@ class CameraRemoteApp(tk.Tk):
         for column, (label, command) in enumerate((("Start", "START"), ("Stop & Save", "STOP"),
                 ("Back", "CAM:BACK"), ("Front", "CAM:FRONT"), ("1×", "ZOOM:1"), ("2×", "ZOOM:2"))):
             live_controls.columnconfigure(column, weight=1)
-            self._button(live_controls, label, lambda c=command: self._command(c)).grid(
-                row=0, column=column, sticky="ew", padx=2)
+            button = self._button(live_controls, label, lambda c=command: self._command(c))
+            button.grid(row=0, column=column, sticky="ew", padx=2)
+            self.live_buttons.append((button, command))
         live_quality = tk.Frame(parent, bg=COLORS["panel"])
         live_quality.pack(fill="x", pady=(8, 0))
-        ttk.Combobox(live_quality, textvariable=self.mode_var, state="readonly", width=14,
-            values=("4K60", "4K30", "1080P60", "1080P30", "720P60", "720P30")).pack(side="left", ipady=7)
-        self._button(live_quality, "Apply quality", self._mode).pack(side="left", padx=8)
+        self.live_mode_combo = ttk.Combobox(live_quality, textvariable=self.mode_var, state="readonly", width=14,
+            values=("4K60", "4K30", "1080P60", "1080P30", "720P60", "720P30"))
+        self.live_mode_combo.pack(side="left", ipady=7)
+        self.live_mode_combo.bind("<<ComboboxSelected>>", lambda _event: setattr(self, "mode_dirty", True))
+        self.live_apply_btn = self._button(live_quality, "Apply quality", self._mode)
+        self.live_apply_btn.pack(side="left", padx=8)
+        self.live_buttons.append((self.live_apply_btn, "MODE"))
+        tk.Label(parent, textvariable=self.confirmed_quality, bg=COLORS["panel"], fg=COLORS["accent"],
+                 anchor="w", wraplength=600, font=("Segoe UI", 11, "bold")).pack(fill="x", pady=(8, 0))
+        self._label(parent, "Preview stays low-resolution; recording quality is confirmed above.", 10, COLORS["muted"]).pack(anchor="w")
         self._label(parent, "Android: open the same link in Chrome. Enable Wi-Fi remote controls on iPhone.", 10, COLORS["muted"]).pack(anchor="w", pady=(10, 0))
 
     def _start_preview(self):
@@ -423,7 +450,9 @@ class CameraRemoteApp(tk.Tk):
             for _ in range(2):
                 try: kind, value = self.preview_worker.frames.get_nowait()
                 except queue.Empty: break
-                if kind == "status":
+                if kind == "camera_status":
+                    self._handle_status(value)
+                elif kind == "status":
                     self.preview_status.set(value)
                 elif kind == "frame":
                     try:
@@ -460,21 +489,41 @@ class CameraRemoteApp(tk.Tk):
         self._set_controls()
 
     def _handle_status(self, value):
-        if value.startswith("REC:1") or "REC=1" in value:
+        fields = dict(field.split("=", 1) for field in value.removeprefix("STATUS:").split(";") if "=" in field) if value.startswith("STATUS:") else {}
+        if "BUSY" in fields: self.busy_recording = fields["BUSY"] == "1"
+        elif value in ("OK:STARTING", "OK:STOPPING"): self.busy_recording = True
+        elif value == "REC:0": self.busy_recording = False
+        if value.startswith("REC:1") or fields.get("REC") == "1":
             self._recording_state(True)
-        elif value.startswith("REC:0") or "REC=0" in value:
+        elif value.startswith("REC:0") or fields.get("REC") == "0":
             self._recording_state(False)
         if value.startswith("OK:MODE:"):
+            self.mode_dirty = False
             self.mode_var.set(value.removeprefix("OK:MODE:"))
-        if value.startswith("STATUS:"):
-            for field in value.removeprefix("STATUS:").split(";"):
-                key, _, val = field.partition("=")
-                if key == "MODE": self.mode_var.set(val)
-                elif key == "CAM": self.camera_var.set(val)
+            self.info_var.set("Quality applied on iPhone. Checking actual format…")
+        if "MODE" in fields:
+            if not self.mode_dirty: self.mode_var.set(fields["MODE"])
+            self.confirmed_quality.set(f"Confirmed on iPhone: {fields['MODE']} · {fields.get('WIDTH', '?')} × {fields.get('HEIGHT', '?')} · {fields.get('FPS', '?')} FPS")
+        if "CAM" in fields: self.camera_var.set(fields["CAM"])
+        if fields.get("CAPS"):
+            supported = fields["CAPS"].split(",")
+            self.mode_combo.configure(values=supported)
+            self.live_mode_combo.configure(values=supported)
+            if self.mode_var.get() not in supported:
+                self.mode_dirty = False
+                self.mode_var.set(fields.get("MODE", supported[0]))
+        if fields.get("LAST") and fields["LAST"] != "NONE":
+            self.clip_quality.set("Verified saved file: " + fields["LAST"])
+        if value.startswith("CLIP:"):
+            self.clip_quality.set("Verified saved file: " + value.removeprefix("CLIP:"))
         if value.startswith("OK:CAM:"):
             side, _, mode = value.removeprefix("OK:CAM:").partition(";MODE=")
             self.camera_var.set(side)
+            self.mode_dirty = False
             if mode: self.mode_var.set(mode)
+        if fields.get("BUSY") == "1" and fields.get("REC") == "0":
+            self.recording_var.set("STARTING / SAVING ON iPHONE…")
+        self._set_controls()
         messages = {
             "OK:STARTING": "Starting… waiting for iPhone recording confirmation",
             "OK:STOPPING": "Stopping… waiting for file to finish",
@@ -487,7 +536,16 @@ class CameraRemoteApp(tk.Tk):
         if value in messages:
             self.save_var.set(messages[value])
         if value.startswith("ERR:"):
-            self.info_var.set(value)
+            explanations = {
+                "ERR:STOP_RECORDING_FIRST": "Stop & Save and wait for the file to finish before changing camera/quality.",
+                "ERR:UNSUPPORTED_MODE": "This camera does not support that mode. Choose a mode reported by the iPhone.",
+                "ERR:MODE_APPLY_FAILED": "iPhone could not apply the format/FPS. Check the confirmed format; try again while idle.",
+                "ERR:AUTH_REQUIRED": "Reconnect Bluetooth and enter the current iPhone PIN.",
+                "ERR:FOREGROUND_REQUIRED": "Keep iPhone BLE Camera open and the phone unlocked.",
+            }
+            self.info_var.set(explanations.get(value, value))
+        if (value.startswith(("OK:MODE:", "OK:CAM:", "ERR:")) and self.authorized and self.connection_ok):
+            self.worker.submit(self.worker.command("STATUS"))
         if value == "OK:AUTH":
             self.info_var.set("Connected. Apply quality, then Start recording.")
             self.worker.submit(self.worker.command("STATUS"))
@@ -534,9 +592,13 @@ class CameraRemoteApp(tk.Tk):
         for widget in (self.zoom1_btn, self.zoom2_btn, self.refresh_btn):
             widget.configure(state=mode)
         for widget in (self.apply_btn, self.back_btn, self.front_btn):
-            widget.configure(state="normal" if can_send and not self.recording_active else "disabled")
-        self.start_btn.configure(state="normal" if can_send and not self.recording_active else "disabled")
+            widget.configure(state="normal" if can_send and not self.recording_active and not self.busy_recording else "disabled")
+        self.start_btn.configure(state="normal" if can_send and not self.recording_active and not self.busy_recording else "disabled")
         self.stop_btn.configure(state="normal" if can_send else "disabled")
+        for widget, command in self.live_buttons:
+            allowed = can_send and (command == "STOP" or command.startswith("ZOOM:") or
+                (not self.recording_active and not self.busy_recording))
+            widget.configure(state="normal" if allowed else "disabled")
         self.connect_btn.configure(state="normal" if not self.connection_ok else "disabled")
         self.disconnect_btn.configure(state="normal" if self.connection_ok else "disabled")
 
