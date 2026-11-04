@@ -10,6 +10,13 @@ import queue
 import threading
 import tkinter as tk
 import time
+import io
+import ipaddress
+import re
+import urllib.request
+import urllib.error
+from urllib.parse import urlsplit, parse_qs, urlencode
+from PIL import Image, ImageTk
 from dataclasses import dataclass
 from datetime import datetime
 from tkinter import messagebox, ttk
@@ -165,6 +172,66 @@ class BluetoothWorker:
         self.events.put(("authorized", False))
 
 
+
+def preview_frame_url(address: str) -> str:
+    """Only accept the local, token-protected link shown by the iPhone."""
+    url = urlsplit(address.strip())
+    try:
+        host = ipaddress.IPv4Address(url.hostname or "")
+        port = url.port
+    except ValueError as exc:
+        raise ValueError("Paste the numeric local Wi-Fi link shown on iPhone") from exc
+    allowed = any(host in net for net in (ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"), ipaddress.ip_network("192.168.0.0/16"),
+        ipaddress.ip_network("127.0.0.0/8")))
+    key = parse_qs(url.query).get("key", [""])[0]
+    if (url.scheme != "http" or not allowed or port is None or url.username or url.password
+            or url.path not in ("", "/", "/frame") or not re.fullmatch(r"[a-fA-F0-9]{32}", key)):
+        raise ValueError("Use the full local Wi-Fi link from the iPhone, including its key")
+    return f"http://{host}:{port}/frame?{urlencode({'key': key})}"
+
+
+class NoPreviewRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError("Preview redirects are not allowed; use the iPhone link")
+
+
+class PreviewWorker:
+    def __init__(self, address):
+        self.url = preview_frame_url(address)
+        self.frames = queue.Queue(maxsize=2)
+        self.stopped = threading.Event()
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoPreviewRedirect())
+        self.thread = threading.Thread(target=self._run, daemon=True, name="wifi-preview")
+
+    def _put(self, kind, value):
+        try:
+            self.frames.put_nowait((kind, value))
+        except queue.Full:
+            try: self.frames.get_nowait()
+            except queue.Empty: pass
+            try: self.frames.put_nowait((kind, value))
+            except queue.Full: pass
+
+    def _run(self):
+        while not self.stopped.is_set():
+            try:
+                request = urllib.request.Request(self.url, headers={"Cache-Control": "no-cache"})
+                with self.opener.open(request, timeout=2) as response:
+                    if response.headers.get_content_type() != "image/jpeg":
+                        raise ValueError("iPhone did not return a preview image")
+                    data = response.read(512 * 1024 + 1)
+                    if len(data) > 512 * 1024 or not data.startswith(b"\xff\xd8"):
+                        raise ValueError("Invalid preview image")
+                self._put("frame", data)
+            except urllib.error.HTTPError as exc:
+                self._put("status", "Waiting for camera frames…" if exc.code == 503 else "Preview access denied. Copy a fresh link from iPhone.")
+            except Exception:
+                self._put("status", "Preview disconnected. Check same Wi-Fi, iPhone app and Local Network permission.")
+            self.stopped.wait(0.2)
+
+    def stop(self): self.stopped.set()
+
 class CameraRemoteApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -189,7 +256,13 @@ class CameraRemoteApp(tk.Tk):
         self.recording_since = None
         self.timer_var = tk.StringVar(value="00:00:00")
         self.save_var = tk.StringVar(value="Recordings stay on iPhone • Files backup + Photos with permission")
+        self.preview_worker = None
+        self.preview_photo = None
+        self.preview_last_frame = 0
+        self.preview_address = tk.StringVar()
+        self.preview_status = tk.StringVar(value="Enable Wi-Fi preview on iPhone, then paste its link here")
         self._build_ui()
+        self.after(100, self._poll_preview)
         self.after(250, self._tick)
         self.after(100, self._pump)
         self.protocol("WM_DELETE_WINDOW", self._close)
@@ -222,8 +295,13 @@ class CameraRemoteApp(tk.Tk):
         self._label(header, "CAMERA REMOTE", 24, bold=True).pack(side="left")
         tk.Label(header, textvariable=self.state_var, font=("Segoe UI", 12, "bold"),
                  bg=COLORS["background"], fg=COLORS["accent"]).pack(side="right")
-        main = tk.Frame(self, bg=COLORS["panel"], padx=28, pady=24)
-        main.grid(row=1, column=0, sticky="nsew", padx=(24, 12), pady=(0, 24))
+        notebook = ttk.Notebook(self)
+        notebook.grid(row=1, column=0, sticky="nsew", padx=(24, 12), pady=(0, 24))
+        main = tk.Frame(notebook, bg=COLORS["panel"], padx=28, pady=24)
+        notebook.add(main, text="  Recording controls  ")
+        live = tk.Frame(notebook, bg=COLORS["panel"], padx=16, pady=16)
+        notebook.add(live, text="  LIVE PREVIEW  ")
+        self._build_preview(live)
         self._label(main, "RECORDING DASHBOARD", 12, COLORS["muted"], True).pack(anchor="w")
         self.recording_label = tk.Label(main, textvariable=self.recording_var, anchor="w",
             font=("Segoe UI", 23, "bold"), bg=COLORS["panel"], fg=COLORS["foreground"])
@@ -260,7 +338,7 @@ class CameraRemoteApp(tk.Tk):
         settings.columnconfigure((0, 1), weight=1)
         tk.Label(main, textvariable=self.save_var, anchor="w", justify="left", wraplength=540,
             font=("Segoe UI", 12, "bold"), bg=COLORS["panel"], fg=COLORS["accent"]).pack(fill="x", pady=(16, 8))
-        self._label(main, "No live video on laptop • Keep iPhone app open", 11, COLORS["muted"]).pack(anchor="w")
+        self._label(main, "Live video: open LIVE PREVIEW tab • Keep iPhone app open", 11, COLORS["muted"]).pack(anchor="w")
         side = tk.Frame(self, bg=COLORS["background"])
         side.grid(row=1, column=1, sticky="nsew", padx=(0, 24), pady=(0, 24))
         side.rowconfigure(1, weight=1)
@@ -294,6 +372,64 @@ class CameraRemoteApp(tk.Tk):
         self.refresh_btn.pack(fill="x", pady=(12, 0))
         self._log("Open iPhone app → Scan → Enter PIN → Connect")
         self._set_controls()
+
+    def _build_preview(self, parent):
+        self._label(parent, "LIVE iPHONE CAMERA", 18, bold=True).pack(anchor="w")
+        self._label(parent, "Same Wi-Fi · Framing preview · Recordings stay on iPhone", 10, COLORS["muted"]).pack(anchor="w", pady=(4, 12))
+        tk.Entry(parent, textvariable=self.preview_address, font=("Segoe UI", 11)).pack(fill="x", ipady=8)
+        controls = tk.Frame(parent, bg=COLORS["panel"])
+        controls.pack(fill="x", pady=10)
+        self._button(controls, "Connect preview", self._start_preview, primary=True).pack(side="left", padx=(0, 10))
+        self._button(controls, "Stop preview", self._stop_preview).pack(side="left")
+        tk.Label(parent, textvariable=self.preview_status, bg=COLORS["panel"], fg=COLORS["accent"],
+                 font=("Segoe UI", 11), wraplength=600, justify="left").pack(fill="x", pady=(0, 10))
+        self.preview_label = tk.Label(parent, bg="#050a12", fg="white", text="Live camera will appear here",
+                                     font=("Segoe UI", 14))
+        self.preview_label.pack(fill="both", expand=True)
+        self._label(parent, "Android: open the same link in Chrome. Enable Wi-Fi remote controls on iPhone.", 10, COLORS["muted"]).pack(anchor="w", pady=(10, 0))
+
+    def _start_preview(self):
+        self._stop_preview()
+        try:
+            self.preview_worker = PreviewWorker(self.preview_address.get())
+        except ValueError as exc:
+            self.preview_status.set(str(exc))
+            return
+        self.preview_status.set("Connecting to local iPhone preview…")
+        self.preview_worker.thread.start()
+
+    def _stop_preview(self):
+        if self.preview_worker:
+            self.preview_worker.stop()
+            self.preview_worker = None
+        self.preview_label.configure(image="", text="Preview stopped")
+        self.preview_photo = None
+        self.preview_status.set("Preview stopped • Bluetooth controls remain available")
+
+    def _poll_preview(self):
+        if self.preview_worker:
+            for _ in range(2):
+                try: kind, value = self.preview_worker.frames.get_nowait()
+                except queue.Empty: break
+                if kind == "status":
+                    self.preview_status.set(value)
+                elif kind == "frame":
+                    try:
+                        with Image.open(io.BytesIO(value)) as source:
+                            if source.width > 1280 or source.height > 1280:
+                                raise ValueError("Preview dimensions exceed limit")
+                            picture = source.copy()
+                        picture.thumbnail((max(200, self.preview_label.winfo_width()), max(180, self.preview_label.winfo_height())))
+                        self.preview_photo = ImageTk.PhotoImage(picture)
+                        self.preview_label.configure(image=self.preview_photo, text="")
+                        self.preview_last_frame = time.monotonic()
+                        self.preview_status.set("LIVE · Local Wi-Fi preview · No audio")
+                    except Exception:
+                        self.preview_status.set("Invalid preview frame; reconnect using the iPhone link")
+            if time.monotonic() - self.preview_last_frame > 3:
+                self.preview_label.configure(image="", text="Waiting for live frames…")
+                self.preview_photo = None
+        self.after(100, self._poll_preview)
 
     def _tick(self):
         if self.recording_active and self.recording_since is not None:
@@ -433,6 +569,7 @@ class CameraRemoteApp(tk.Tk):
         self.after(100, self._pump)
 
     def _close(self):
+        self._stop_preview()
         try:
             self.worker.submit(self.worker.disconnect())
         except Exception:

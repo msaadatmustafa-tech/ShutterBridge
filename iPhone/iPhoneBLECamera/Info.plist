@@ -26,8 +26,14 @@
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Allow Bluetooth to control recording from your laptop.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_iphonecam._tcp</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Camera access is needed to record video on this iPhone.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Show live camera preview and optionally accept remote controls from your laptop or Android browser on the same Wi-Fi.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is used to record video sound.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

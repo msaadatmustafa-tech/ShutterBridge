@@ -69,6 +69,23 @@ struct ContentView: View {
                     }
                     .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("LIVE PREVIEW / ANDROID REMOTE", systemImage: "wifi").font(.headline)
+                        Text(camera.wifiStatus).font(.subheadline)
+                        Button(camera.wifiEnabled ? "Turn Wi-Fi preview off" : "Enable Wi-Fi preview") { camera.toggleWiFi() }
+                            .buttonStyle(.bordered).disabled(camera.isRecording && !camera.wifiEnabled)
+                        if camera.wifiEnabled {
+                            Toggle("Allow Wi-Fi remote controls", isOn: $camera.wifiRemoteEnabled)
+                            Text("Open this link on Android, or paste it in the Windows Live Preview tab.")
+                                .font(.caption)
+                            Text(camera.wifiAddress).font(.caption.monospaced()).textSelection(.enabled)
+                            if let url = URL(string: camera.wifiAddress) { ShareLink("Share preview / remote link", item: url) }
+                            Text("Keep this app foreground. The link grants preview access; controls need the toggle above. Use a trusted local Wi-Fi. Link changes when re-enabled.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
                     DisclosureGroup("Bluetooth connection · PIN \(bluetooth.sessionPIN)") {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(bluetooth.displayState)
