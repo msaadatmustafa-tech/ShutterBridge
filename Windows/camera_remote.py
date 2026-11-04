@@ -57,7 +57,14 @@ class BluetoothWorker:
 
     def _run(self):
         asyncio.set_event_loop(self.loop)
-        self.loop.run_forever()
+        try:
+            self.loop.run_forever()
+        finally:
+            pending = asyncio.all_tasks(self.loop)
+            for task in pending: task.cancel()
+            if pending:
+                self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            self.loop.close()
 
     def submit(self, coroutine):
         future = asyncio.run_coroutine_threadsafe(coroutine, self.loop)
@@ -648,7 +655,7 @@ class CameraRemoteApp(tk.Tk):
             self.worker.submit(self.worker.disconnect())
         except Exception:
             pass
-        self.worker.loop.call_later(2, self.worker.loop.stop)
+        self.worker.loop.call_soon_threadsafe(self.worker.loop.call_later, 2, self.worker.loop.stop)
         self.destroy()
 
 
