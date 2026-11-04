@@ -48,7 +48,7 @@ Bluetooth carries commands/status, never video. Wi-Fi preview is a silent **up-t
 4. Sign/install using **your own Apple ID locally**. Complete any trust / Developer Mode prompts on iPhone. The download is unsigned and cannot run until personally signed.
 5. Open **iPhone BLE Camera**. Grant Camera and Bluetooth permissions; Microphone enables sound and Add Photos enables gallery saving. Keep the app open and iPhone unlocked.
 
-Signing may expire and require refresh; see the [official Sideloadly FAQ](https://sideloadly.io/faq.php). Keep the same Apple ID/bundle ID when updating and back up clips first. Never put Apple passwords, signing certificates or provisioning profiles in GitHub.
+Signing may expire and require refresh; see the [official Sideloadly FAQ](https://sideloadly.io/faq). Keep the same Apple ID/bundle ID when updating and back up clips first. Never put Apple passwords, signing certificates or provisioning profiles in GitHub.
 
 The installed app currently uses the **Camera Studio** interface and **iPhone BLE Camera** display name. ShutterBridge is the public project name.
 

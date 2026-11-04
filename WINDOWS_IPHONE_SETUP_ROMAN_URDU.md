@@ -10,7 +10,7 @@
 2. iPhone USB se connect, unlock aur **Trust This Computer** accept karein.
 3. Sideloadly mein iPhone aur downloaded unsigned IPA select karein.
 4. Apni Apple ID aur authentication sirf local installer mein enter karein. Password, signing key aur provisioning profile kabhi GitHub par upload na karein.
-5. Install ke baad agar iPhone trust/developer-mode prompt de to usay phone par complete karein. Signing expire hone par local installer se refresh karna par sakta hai; [official FAQ](https://sideloadly.io/faq.php) dekhein.
+5. Install ke baad agar iPhone trust/developer-mode prompt de to usay phone par complete karein. Signing expire hone par local installer se refresh karna par sakta hai; [official FAQ](https://sideloadly.io/faq) dekhein.
 6. **iPhone BLE Camera** kholein. Camera/Bluetooth allow karein. Audio ke liye Microphone aur Gallery save ke liye Add Photos allow karein. App foreground mein aur phone unlocked rakhein.
 
 Update se pehle Files se recordings ka backup lein. Same Apple ID aur bundle ID se existing app par update karein.
