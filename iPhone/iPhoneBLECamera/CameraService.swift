@@ -204,7 +204,10 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     private var recordingPending = false
 
     func setForeground(_ active: Bool) {
-        if !active { stopWiFi() }
+        if !active, wifiEnabled {
+            previewServer.stop(resetSession: false)
+            wifiStatus = "Preview paused. Return to this app to reconnect the same link."
+        }
         captureQueue.async {
             self.foreground = active
             if !active {
@@ -215,7 +218,12 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
                 self.session.startRunning()
                 self.started = self.session.isRunning
             }
-            DispatchQueue.main.async { self.isReady = self.started }
+            DispatchQueue.main.async {
+                self.isReady = self.started
+                if active, self.started, self.wifiEnabled {
+                    self.previewServer.start()
+                }
+            }
         }
     }
 
@@ -512,6 +520,7 @@ final class LocalCameraServer {
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private var token = ""
+    private var sessionPort: NWEndpoint.Port?
 
     var running: Bool { lock.lock(); defer { lock.unlock() }; return active }
     func updateFrame(_ jpeg: Data) {
@@ -528,8 +537,10 @@ final class LocalCameraServer {
                 return
             }
             do {
-                self.token = UUID().uuidString.replacingOccurrences(of: "-", with: "")
-                let listener = try NWListener(using: .tcp, on: .any)
+                if self.token.isEmpty { self.token = UUID().uuidString.replacingOccurrences(of: "-", with: "") }
+                let parameters = NWParameters.tcp
+                parameters.allowLocalEndpointReuse = true
+                let listener = try NWListener(using: parameters, on: self.sessionPort ?? .any)
                 listener.service = NWListener.Service(name: "iPhone Camera Remote", type: "_iphonecam._tcp")
                 self.listener = listener
                 listener.stateUpdateHandler = { [weak self, weak listener] state in
@@ -537,6 +548,7 @@ final class LocalCameraServer {
                     switch state {
                     case .ready:
                         guard let port = listener.port else { return }
+                        self.sessionPort = port
                         self.lock.lock(); self.active = true; self.lock.unlock()
                         self.report("http://\(ip):\(port.rawValue)/?key=\(self.token)", "Wi-Fi preview ON · same Wi-Fi only")
                     case .failed(let error):
@@ -558,13 +570,13 @@ final class LocalCameraServer {
             } catch { self.report("", "Cannot start preview: \(error.localizedDescription)") }
         }
     }
-    func stop() {
+    func stop(resetSession: Bool = true) {
         lock.lock(); active = false; frame = nil; lock.unlock()
         queue.async {
             self.listener?.cancel(); self.listener = nil
             for connection in self.connections.values { connection.cancel() }
             self.connections.removeAll()
-            self.token = ""
+            if resetSession { self.token = ""; self.sessionPort = nil }
         }
     }
     private func report(_ address: String, _ state: String) {

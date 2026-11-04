@@ -19,3 +19,7 @@ The local HTTP link contains a random access key. Anyone on the local network wi
 - Browser remote was opened against a simulated camera: image loaded, START changed status to REC=1, STOP changed status to REC=0. This was a desktop browser test, not a physical Android test.
 - iOS build 27abc17 succeeded: https://github.com/msaadatmustafa-tech/iPhone-BLE-Camera-Remote/actions/runs/41810811844 . Downloaded v1.3 IPA archive integrity and Local Network, Bonjour and Photos usage keys verified.
 - Still required on hardware: install v1.3, grant permissions, open preview on Windows and Android, test Bluetooth and Wi-Fi command paths, verify recording with preview at each supported mode, check rotation, latency, sustained heat/battery behavior, app-background revocation, Photos saving and actual clip playback.
+
+## Version 1.4 connection recovery
+
+The QR code on iPhone opens the current remote directly on Android without switching iPhone apps to share the link. Backgrounding still stops recording, preview and network connections. Returning to foreground automatically resumes the same session key and port; Windows/browser retry automatically. Explicit Turn Wi-Fi preview off revokes the link. A new app launch or changed Wi-Fi address still needs a fresh link.

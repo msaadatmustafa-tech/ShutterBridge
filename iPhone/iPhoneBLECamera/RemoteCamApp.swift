@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import CoreImage
 
 @main
 struct iPhoneBLECameraApp: App {
@@ -19,6 +20,15 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var didInitialize = false
     @State private var showFullScreen = false
+
+    private func wifiQR(_ address: String) -> UIImage? {
+        guard !address.isEmpty, let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(address.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 6, y: 6)),
+              let cgImage = CIContext().createCGImage(output, from: output.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -79,8 +89,15 @@ struct ContentView: View {
                             Text("Open this link on Android, or paste it in the Windows Live Preview tab.")
                                 .font(.caption)
                             Text(camera.wifiAddress).font(.caption.monospaced()).textSelection(.enabled)
+                            if let qr = wifiQR(camera.wifiAddress) {
+                                Image(uiImage: qr).interpolation(.none).resizable().scaledToFit()
+                                    .frame(width: 180, height: 180).padding(12).background(.white)
+                                    .accessibilityLabel("Scan this QR code with Android to open the local remote")
+                                Text("Android: scan this QR with Camera / Google Lens. Keep this iPhone app open.")
+                                    .font(.caption)
+                            }
                             if let url = URL(string: camera.wifiAddress) { ShareLink("Share preview / remote link", item: url) }
-                            Text("Keep this app foreground. The link grants preview access; controls need the toggle above. Use a trusted local Wi-Fi. Link changes when re-enabled.")
+                            Text("Keep this app foreground. The link grants preview access; controls need the toggle above. Use a trusted local Wi-Fi. The same link resumes when you return to this app. Turning preview off revokes it.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
