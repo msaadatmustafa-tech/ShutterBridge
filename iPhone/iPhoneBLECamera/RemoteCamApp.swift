@@ -20,80 +20,64 @@ struct ContentView: View {
     @State private var didInitialize = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("iPhone BLE Camera")
-                    .font(.largeTitle.bold())
-                Text("Video records on this iPhone. Bluetooth carries remote-control commands only.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                CameraPreview(session: camera.session)
-                    .frame(height: 310)
-                    .clipShape(RoundedRectangle(cornerRadius: 17))
-                    .overlay(alignment: .topTrailing) {
-                        if camera.isRecording {
-                            Label("REC", systemImage: "record.circle.fill")
-                                .font(.caption.bold())
-                                .padding(9)
-                                .background(.red.opacity(0.85), in: Capsule())
-                                .padding(12)
-                        }
-                    }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Bluetooth", systemImage: "antenna.radiowaves.left.and.right")
-                        .font(.headline)
-                    Text(bluetooth.displayState)
-                        .font(.subheadline)
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("Laptop connection PIN")
+                        Text("CAMERA REMOTE").font(.headline)
                         Spacer()
-                        Text(bluetooth.sessionPIN)
-                            .font(.system(.title3, design: .monospaced).weight(.bold))
-                            .textSelection(.enabled)
+                        Text(camera.isRecording ? "● RECORDING" : "STANDBY")
+                            .font(.headline).foregroundStyle(camera.isRecording ? .red : .green)
                     }
-                    .padding(12)
-                    .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                    Text("Enter this code in the Windows controller. Keep this app in the foreground and the phone unlocked.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(14)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Camera", systemImage: "video")
-                        .font(.headline)
-                    Text(camera.cameraStatus)
-                        .font(.subheadline)
-                    Text("Current: \(camera.currentMode)  |  \(camera.cameraSide)")
-                        .font(.subheadline.monospaced())
-                    Text("Supported: \(camera.availableModes.joined(separator: ", "))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 10) {
-                        Button("Start") { camera.execute("START") { bluetooth.send($0) } }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.red)
+                    CameraPreview(session: camera.session)
+                        .frame(height: max(240, geometry.size.height * 0.48))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(alignment: .bottomLeading) {
+                            VStack(alignment: .leading) {
+                                Text("\(camera.currentMode)  ·  \(camera.cameraSide)")
+                                if let start = camera.recordingStartedAt {
+                                    Text(start, style: .timer).font(.largeTitle.monospacedDigit().bold())
+                                }
+                            }
+                            .padding(12).background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.white).padding(12)
+                        }
+                    Text(camera.cameraStatus).font(.headline)
+                    HStack(spacing: 12) {
+                        Button("START RECORDING") { camera.execute("START") { bluetooth.send($0) } }
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(.red, in: RoundedRectangle(cornerRadius: 12))
                             .disabled(!camera.isReady || camera.isRecording)
-                        Button("Stop") { camera.execute("STOP") { bluetooth.send($0) } }
-                            .buttonStyle(.bordered)
+                        Button("STOP & SAVE") { camera.execute("STOP") { bluetooth.send($0) } }
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(.gray.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
                             .disabled(!camera.isRecording)
                     }
-                    Text("Latest file: \(camera.lastFile)")
-                        .font(.caption)
-                        .textSelection(.enabled)
+                    .buttonStyle(.plain).font(.headline)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("RECORDINGS", systemImage: "photo.on.rectangle")
+                            .font(.headline)
+                        Text(camera.photosStatus).font(.subheadline)
+                        Text("Latest: \(camera.lastFile)").font(.caption).textSelection(.enabled)
+                        Button("Save existing Files recordings to Photos") { camera.importExistingRecordings() }
+                            .buttonStyle(.bordered).disabled(camera.isRecording)
+                        Text("Originals stay in Files → On My iPhone → iPhone BLE Camera. Photos needs Add Photos permission.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    DisclosureGroup("Bluetooth connection · PIN \(bluetooth.sessionPIN)") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(bluetooth.displayState)
+                            Text("Supported: \(camera.availableModes.joined(separator: ", "))")
+                            Text("Keep this app open and phone unlocked. Video stays on this iPhone; Bluetooth carries controls only.")
+                        }.font(.caption).padding(.top, 8)
+                    }
                 }
-                .padding(14)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
-
-                Text("Files app → On My iPhone → iPhone BLE Camera. You can also transfer recordings over USB using Apple Devices file sharing.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                .padding(16)
             }
-            .padding(16)
         }
+        .preferredColorScheme(.dark)
         .onChange(of: scenePhase) { phase in
             let active = phase == .active
             UIApplication.shared.isIdleTimerDisabled = active

@@ -30,6 +30,8 @@
 	<string>Camera access is needed to record video on this iPhone.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is used to record video sound.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save your recorded videos to Photos so they appear in your gallery.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>UILaunchScreen</key>

@@ -9,6 +9,7 @@ import asyncio
 import queue
 import threading
 import tkinter as tk
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from tkinter import messagebox, ttk
@@ -168,8 +169,9 @@ class CameraRemoteApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("iPhone 4K BLE Camera — Laptop Remote")
-        self.geometry("845x720")
-        self.minsize(750, 655)
+        self.geometry("1280x800")
+        self.minsize(980, 650)
+        self.state("zoomed")
         self.configure(bg=COLORS["background"])
         self.events: queue.Queue = queue.Queue()
         self.worker = BluetoothWorker(self.events)
@@ -183,7 +185,12 @@ class CameraRemoteApp(tk.Tk):
         self.state_var = tk.StringVar(value="DISCONNECTED")
         self.recording_var = tk.StringVar(value="Not recording")
         self.info_var = tk.StringVar(value="Bluetooth = control only • Videos are saved on iPhone")
+        self.recording_active = False
+        self.recording_since = None
+        self.timer_var = tk.StringVar(value="00:00:00")
+        self.save_var = tk.StringVar(value="Recordings stay on iPhone • Files backup + Photos with permission")
         self._build_ui()
+        self.after(250, self._tick)
         self.after(100, self._pump)
         self.protocol("WM_DELETE_WINDOW", self._close)
 
@@ -207,83 +214,135 @@ class CameraRemoteApp(tk.Tk):
         return button
 
     def _build_ui(self):
-        tk.Label(self, text="iPHONE CAMERA  /  BLE REMOTE", fg=COLORS["accent"],
-                 bg=COLORS["background"], font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=24, pady=(18, 0))
-        tk.Label(self, text="Record on iPhone. Control from laptop.",
-                 fg=COLORS["foreground"], bg=COLORS["background"],
-                 font=("Segoe UI", 19, "bold")).pack(anchor="w", padx=22, pady=(1, 14))
-
-        device_panel = self._frame(self)
-        self._label(device_panel, "1  /  BLUETOOTH CONNECTION", 11, COLORS["muted"], True).pack(anchor="w", pady=(0, 12))
-        row = tk.Frame(device_panel, bg=COLORS["panel"])
+        self.columnconfigure(0, weight=3)
+        self.columnconfigure(1, weight=2)
+        self.rowconfigure(1, weight=1)
+        header = tk.Frame(self, bg=COLORS["background"], padx=28, pady=20)
+        header.grid(row=0, column=0, columnspan=2, sticky="ew")
+        self._label(header, "CAMERA REMOTE", 24, bold=True).pack(side="left")
+        tk.Label(header, textvariable=self.state_var, font=("Segoe UI", 12, "bold"),
+                 bg=COLORS["background"], fg=COLORS["accent"]).pack(side="right")
+        main = tk.Frame(self, bg=COLORS["panel"], padx=28, pady=24)
+        main.grid(row=1, column=0, sticky="nsew", padx=(24, 12), pady=(0, 24))
+        self._label(main, "RECORDING DASHBOARD", 12, COLORS["muted"], True).pack(anchor="w")
+        self.recording_label = tk.Label(main, textvariable=self.recording_var, anchor="w",
+            font=("Segoe UI", 23, "bold"), bg=COLORS["panel"], fg=COLORS["foreground"])
+        self.recording_label.pack(fill="x", pady=(20, 4))
+        tk.Label(main, textvariable=self.timer_var, anchor="w", font=("Consolas", 54, "bold"),
+                 bg=COLORS["panel"], fg=COLORS["accent"]).pack(fill="x", pady=(0, 4))
+        self._label(main, "Elapsed since recording was confirmed on this laptop", 10, COLORS["muted"]).pack(anchor="w")
+        action = tk.Frame(main, bg=COLORS["panel"])
+        action.pack(fill="x", pady=24)
+        action.columnconfigure((0, 1), weight=1)
+        self.start_btn = self._button(action, "START RECORDING", lambda: self._command("START"), primary=True)
+        self.start_btn.configure(font=("Segoe UI", 14, "bold"), pady=20, bg="#b52c45")
+        self.start_btn.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.stop_btn = self._button(action, "STOP & SAVE", lambda: self._command("STOP"))
+        self.stop_btn.configure(font=("Segoe UI", 14, "bold"), pady=20)
+        self.stop_btn.grid(row=0, column=1, sticky="ew", padx=(8, 0))
+        self._label(main, "CAMERA SETTINGS", 12, COLORS["muted"], True).pack(anchor="w")
+        quality = tk.Frame(main, bg=COLORS["panel"])
+        quality.pack(fill="x", pady=(12, 16))
+        self.mode_combo = ttk.Combobox(quality, textvariable=self.mode_var,
+            values=("4K60", "4K30", "1080P60", "1080P30", "720P60", "720P30"), state="readonly", width=14,
+            font=("Segoe UI", 12))
+        self.mode_combo.pack(side="left", ipady=7)
+        self.apply_btn = self._button(quality, "Apply quality", self._mode)
+        self.apply_btn.pack(side="left", padx=12)
+        settings = tk.Frame(main, bg=COLORS["panel"])
+        settings.pack(fill="x")
+        self.back_btn = self._button(settings, "Back camera", lambda: self._command("CAM:BACK"))
+        self.front_btn = self._button(settings, "Front camera", lambda: self._command("CAM:FRONT"))
+        self.zoom1_btn = self._button(settings, "1× zoom", lambda: self._command("ZOOM:1"))
+        self.zoom2_btn = self._button(settings, "2× zoom", lambda: self._command("ZOOM:2"))
+        for i, w in enumerate((self.back_btn, self.front_btn, self.zoom1_btn, self.zoom2_btn)):
+            w.grid(row=i // 2, column=i % 2, sticky="ew", padx=(0, 8), pady=(0, 8))
+        settings.columnconfigure((0, 1), weight=1)
+        tk.Label(main, textvariable=self.save_var, anchor="w", justify="left", wraplength=540,
+            font=("Segoe UI", 12, "bold"), bg=COLORS["panel"], fg=COLORS["accent"]).pack(fill="x", pady=(16, 8))
+        self._label(main, "No live video on laptop • Keep iPhone app open", 11, COLORS["muted"]).pack(anchor="w")
+        side = tk.Frame(self, bg=COLORS["background"])
+        side.grid(row=1, column=1, sticky="nsew", padx=(0, 24), pady=(0, 24))
+        side.rowconfigure(1, weight=1)
+        side.columnconfigure(0, weight=1)
+        connect = tk.Frame(side, bg=COLORS["panel"], padx=20, pady=20)
+        connect.grid(row=0, column=0, sticky="ew", pady=(0, 16))
+        self._label(connect, "1  CONNECT YOUR iPHONE", 12, bold=True).pack(anchor="w", pady=(0, 12))
+        self.devices_box = ttk.Combobox(connect, textvariable=self.device_var, state="readonly", font=("Segoe UI", 11))
+        self.devices_box.pack(fill="x", ipady=7)
+        self.scan_btn = self._button(connect, "Scan for iPhone", self._scan, primary=True)
+        self.scan_btn.pack(fill="x", pady=10)
+        self._label(connect, "6-digit PIN shown in the iPhone app", 11).pack(anchor="w")
+        self.pin_field = tk.Entry(connect, textvariable=self.pin_var, show="•", bg="#0e1725", fg="white",
+            insertbackground="white", font=("Segoe UI", 15), bd=0)
+        self.pin_field.pack(fill="x", ipady=8, pady=(8, 12))
+        row = tk.Frame(connect, bg=COLORS["panel"])
         row.pack(fill="x")
-        self.devices_box = ttk.Combobox(row, textvariable=self.device_var, state="readonly", width=48)
-        self.devices_box.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.scan_btn = self._button(row, "Scan for iPhone", self._scan, primary=True)
-        self.scan_btn.pack(side="left")
-        row2 = tk.Frame(device_panel, bg=COLORS["panel"])
-        row2.pack(fill="x", pady=(12, 0))
-        self._label(row2, "iPhone 6-digit PIN").pack(side="left", padx=(0, 10))
-        self.pin_field = tk.Entry(row2, textvariable=self.pin_var, width=12, show="•",
-                                  bg="#0e1725", fg="white", insertbackground="white",
-                                  font=("Segoe UI", 12), bd=0)
-        self.pin_field.pack(side="left", ipady=6)
-        self.connect_btn = self._button(row2, "Connect", self._connect, primary=True)
-        self.connect_btn.pack(side="left", padx=(12, 8))
-        self.disconnect_btn = self._button(row2, "Disconnect", self._disconnect)
-        self.disconnect_btn.pack(side="left")
-
-        record_panel = self._frame(self)
-        self._label(record_panel, "2  /  VIDEO QUALITY", 11, COLORS["muted"], True).pack(anchor="w", pady=(0, 10))
-        quality_row = tk.Frame(record_panel, bg=COLORS["panel"])
-        quality_row.pack(fill="x")
-        self.mode_combo = ttk.Combobox(quality_row, textvariable=self.mode_var,
-                                        values=("4K60", "4K30", "1080P60", "1080P30", "720P60", "720P30"),
-                                        state="readonly", width=20)
-        self.mode_combo.pack(side="left", padx=(0, 10), ipady=4)
-        self.apply_btn = self._button(quality_row, "Apply Quality", self._mode)
-        self.apply_btn.pack(side="left")
-        self._label(quality_row, "Only supported modes will work", 10, COLORS["muted"]).pack(side="left", padx=13)
-        cam_row = tk.Frame(record_panel, bg=COLORS["panel"])
-        cam_row.pack(fill="x", pady=(12, 0))
-        self._label(cam_row, "Camera:").pack(side="left", padx=(0, 9))
-        self.back_btn = self._button(cam_row, "Back", lambda: self._command("CAM:BACK"))
-        self.back_btn.pack(side="left", padx=(0, 5))
-        self.front_btn = self._button(cam_row, "Front", lambda: self._command("CAM:FRONT"))
-        self.front_btn.pack(side="left")
-        self._label(cam_row, "Zoom:").pack(side="left", padx=(30, 9))
-        self.zoom1_btn = self._button(cam_row, "1×", lambda: self._command("ZOOM:1"))
-        self.zoom1_btn.pack(side="left", padx=(0, 5))
-        self.zoom2_btn = self._button(cam_row, "2×", lambda: self._command("ZOOM:2"))
-        self.zoom2_btn.pack(side="left")
-
-        action_panel = self._frame(self)
-        self._label(action_panel, "3  /  RECORDING", 11, COLORS["muted"], True).pack(anchor="w", pady=(0, 10))
-        buttons = tk.Frame(action_panel, bg=COLORS["panel"])
-        buttons.pack(fill="x")
-        self.start_btn = self._button(buttons, "●  START RECORDING", lambda: self._command("START"), primary=True, width=22)
-        self.start_btn.pack(side="left", padx=(0, 12))
-        self.stop_btn = self._button(buttons, "■  STOP RECORDING", lambda: self._command("STOP"), width=22)
-        self.stop_btn.pack(side="left")
-        self.refresh_btn = self._button(buttons, "Refresh status", lambda: self._command("STATUS"))
-        self.refresh_btn.pack(side="right")
-        tk.Label(action_panel, textvariable=self.recording_var, bg=COLORS["panel"],
-                 fg=COLORS["accent"], font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(12, 0))
-        tk.Label(action_panel, textvariable=self.info_var, bg=COLORS["panel"],
-                 fg=COLORS["muted"], font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
-
-        status_panel = self._frame(self)
-        top = tk.Frame(status_panel, bg=COLORS["panel"])
-        top.pack(fill="x")
-        self._label(top, "DEVICE LOG", 10, COLORS["muted"], True).pack(side="left")
-        tk.Label(top, textvariable=self.state_var, bg=COLORS["panel"], fg=COLORS["warning"],
-                 font=("Segoe UI", 10, "bold")).pack(side="right")
-        self.log_box = tk.Text(status_panel, height=7, bg="#0c1524", fg="#d3e5f1",
-                               font=("Consolas", 9), insertbackground="white", bd=0,
-                               state="disabled", wrap="word")
-        self.log_box.pack(fill="both", expand=True, pady=(8, 0))
-        self._log("Ready. Open the iPhone companion app, then scan.")
+        self.connect_btn = self._button(row, "Connect", self._connect, primary=True)
+        self.connect_btn.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.disconnect_btn = self._button(row, "Disconnect", self._disconnect)
+        self.disconnect_btn.pack(side="left", fill="x", expand=True)
+        log = tk.Frame(side, bg=COLORS["panel"], padx=20, pady=16)
+        log.grid(row=1, column=0, sticky="nsew")
+        self._label(log, "ACTIVITY & SAVE STATUS", 12, bold=True).pack(anchor="w")
+        self.log_box = tk.Text(log, height=5, bg="#0c1524", fg="#d3e5f1", font=("Consolas", 10),
+                               bd=0, state="disabled", wrap="word")
+        self.log_box.pack(fill="both", expand=True, pady=12)
+        tk.Label(log, textvariable=self.info_var, anchor="w", justify="left", wraplength=380,
+                 bg=COLORS["panel"], fg=COLORS["foreground"], font=("Segoe UI", 11)).pack(fill="x")
+        self.refresh_btn = self._button(log, "Refresh iPhone status", lambda: self._command("STATUS"))
+        self.refresh_btn.pack(fill="x", pady=(12, 0))
+        self._log("Open iPhone app → Scan → Enter PIN → Connect")
         self._set_controls()
+
+    def _tick(self):
+        if self.recording_active and self.recording_since is not None:
+            elapsed = int(time.monotonic() - self.recording_since)
+            self.timer_var.set(f"{elapsed // 3600:02}:{elapsed // 60 % 60:02}:{elapsed % 60:02}")
+        self.after(250, self._tick)
+
+    def _recording_state(self, active):
+        if active and not self.recording_active:
+            self.recording_since = time.monotonic()
+            self.timer_var.set("00:00:00")
+            self.save_var.set("Recording on iPhone • Stop to finish and save")
+        self.recording_active = active
+        self.recording_var.set("RECORDING ON iPHONE" if active else "READY TO RECORD")
+        self.recording_label.configure(fg=COLORS["red"] if active else COLORS["foreground"])
+        self._set_controls()
+
+    def _handle_status(self, value):
+        if value.startswith("REC:1") or "REC=1" in value:
+            self._recording_state(True)
+        elif value.startswith("REC:0") or "REC=0" in value:
+            self._recording_state(False)
+        if value.startswith("OK:MODE:"):
+            self.mode_var.set(value.removeprefix("OK:MODE:"))
+        if value.startswith("STATUS:"):
+            for field in value.removeprefix("STATUS:").split(";"):
+                key, _, val = field.partition("=")
+                if key == "MODE": self.mode_var.set(val)
+                elif key == "CAM": self.camera_var.set(val)
+        if value.startswith("OK:CAM:"):
+            side, _, mode = value.removeprefix("OK:CAM:").partition(";MODE=")
+            self.camera_var.set(side)
+            if mode: self.mode_var.set(mode)
+        messages = {
+            "OK:STARTING": "Starting… waiting for iPhone recording confirmation",
+            "OK:STOPPING": "Stopping… waiting for file to finish",
+            "OK:SAVED": "Saved in iPhone Files • Checking Photos save status",
+            "SAVE:PHOTOS_PENDING": "File saved • Copying to Photos…",
+            "SAVE:PHOTOS_OK": "SAVED TO PHOTOS / GALLERY + FILES",
+            "SAVE:FILES_ONLY": "Saved in Files only • Allow Add Photos on iPhone, then retry import",
+            "SAVE:PHOTOS_FAILED": "Photos save failed • Files copy is safe; retry on iPhone",
+        }
+        if value in messages:
+            self.save_var.set(messages[value])
+        if value.startswith("ERR:"):
+            self.info_var.set(value)
+        if value == "OK:AUTH":
+            self.info_var.set("Connected. Apply quality, then Start recording.")
+            self.worker.submit(self.worker.command("STATUS"))
 
     def _log(self, value):
         self.log_box.configure(state="normal")
@@ -314,6 +373,8 @@ class CameraRemoteApp(tk.Tk):
         if not self.authorized:
             messagebox.showinfo("Connect first", "Connect and enter your iPhone PIN first.")
             return
+        if command in ("START", "STOP"):
+            self.save_var.set("Sending command… waiting for iPhone")
         self.worker.submit(self.worker.command(command))
 
     def _mode(self):
@@ -322,9 +383,12 @@ class CameraRemoteApp(tk.Tk):
     def _set_controls(self):
         can_send = self.connection_ok and self.authorized
         mode = "normal" if can_send else "disabled"
-        for widget in (self.start_btn, self.stop_btn, self.apply_btn, self.back_btn,
-                       self.front_btn, self.zoom1_btn, self.zoom2_btn, self.refresh_btn):
+        for widget in (self.zoom1_btn, self.zoom2_btn, self.refresh_btn):
             widget.configure(state=mode)
+        for widget in (self.apply_btn, self.back_btn, self.front_btn):
+            widget.configure(state="normal" if can_send and not self.recording_active else "disabled")
+        self.start_btn.configure(state="normal" if can_send and not self.recording_active else "disabled")
+        self.stop_btn.configure(state="normal" if can_send else "disabled")
         self.connect_btn.configure(state="normal" if not self.connection_ok else "disabled")
         self.disconnect_btn.configure(state="normal" if self.connection_ok else "disabled")
 
@@ -353,7 +417,10 @@ class CameraRemoteApp(tk.Tk):
                 self.connection_ok = bool(value)
                 if not value:
                     self.authorized = False
-                    self.recording_var.set("Recording status unknown (disconnected)")
+                    self.recording_active = False
+                    self.recording_since = None
+                    self.recording_var.set("CONNECTION LOST")
+                    self.save_var.set("Recording status unknown • Check the iPhone")
                 self.state_var.set("CONNECTED" if value else "DISCONNECTED")
                 self._set_controls()
             elif event == "authorized":
@@ -362,16 +429,7 @@ class CameraRemoteApp(tk.Tk):
                 self._set_controls()
             elif event == "message":
                 self._log(f"iPhone: {value}")
-                if value.startswith("REC:1") or "REC=1" in value:
-                    self.recording_var.set("● Recording on iPhone")
-                elif value.startswith("REC:0") or "REC=0" in value:
-                    self.recording_var.set("Not recording")
-                elif value.startswith("OK:MODE:"):
-                    self.mode_var.set(value.removeprefix("OK:MODE:"))
-                elif value.startswith("ERR:"):
-                    self.info_var.set(value)
-                if value == "OK:AUTH":
-                    self.info_var.set("Authenticated; iPhone camera ready for commands")
+                self._handle_status(value)
         self.after(100, self._pump)
 
     def _close(self):

@@ -3,6 +3,7 @@ import UIKit
 import AVFoundation
 import CoreMedia
 import Combine
+import Photos
 
 /// Records videos locally. All AVFoundation session work is serialized on captureQueue.
 final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecordingDelegate {
@@ -13,6 +14,78 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     @Published private(set) var cameraSide = "BACK"
     @Published private(set) var availableModes: [String] = []
     @Published private(set) var lastFile = "No recording yet"
+
+    @Published private(set) var photosStatus = "Photos access will be requested when saving a clip"
+    @Published private(set) var recordingStartedAt: Date?
+    private var photosInFlight: Set<String> = []
+    private var importingExisting = false
+
+    // Called on the main queue. Keep the Documents original even if Photos fails.
+    private func saveToPhotos(_ url: URL, completion: (() -> Void)? = nil) {
+        let key = url.lastPathComponent
+        let saved = UserDefaults.standard.stringArray(forKey: "photosImportedClips") ?? []
+        guard !saved.contains(key), !photosInFlight.contains(key) else { completion?(); return }
+        photosInFlight.insert(key)
+        photosStatus = "Saving to Photos... Files backup is safe"
+        onCameraEvent?("SAVE:PHOTOS_PENDING")
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            DispatchQueue.main.async {
+                guard status == .authorized || status == .limited else {
+                    self.photosInFlight.remove(key)
+                    self.photosStatus = "Photos access denied. Video is in Files. Allow Add Photos in Settings, then retry."
+                    self.onCameraEvent?("SAVE:FILES_ONLY")
+                    completion?()
+                    return
+                }
+                PHPhotoLibrary.shared().performChanges({
+                    PHAssetCreationRequest.forAsset().addResource(with: .video, fileURL: url, options: nil)
+                }) { success, error in
+                    DispatchQueue.main.async {
+                        self.photosInFlight.remove(key)
+                        if success {
+                            var imported = UserDefaults.standard.stringArray(forKey: "photosImportedClips") ?? []
+                            if !imported.contains(key) { imported.append(key) }
+                            UserDefaults.standard.set(imported, forKey: "photosImportedClips")
+                            self.photosStatus = "Saved to Photos / Recents and Files"
+                            self.onCameraEvent?("SAVE:PHOTOS_OK")
+                        } else {
+                            self.photosStatus = "Photos save failed: \(error?.localizedDescription ?? "Unknown error"). Video remains in Files; retry below."
+                            self.onCameraEvent?("SAVE:PHOTOS_FAILED")
+                        }
+                        completion?()
+                    }
+                }
+            }
+        }
+    }
+
+    func importExistingRecordings() {
+        guard !isRecording, !importingExisting else { return }
+        importingExisting = true
+        let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let urls = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension.lowercased() == "mov" }
+        let imported = UserDefaults.standard.stringArray(forKey: "photosImportedClips") ?? []
+        let pending = urls.filter { !imported.contains($0.lastPathComponent) }
+        guard !pending.isEmpty else {
+            importingExisting = false
+            photosStatus = "No unsaved clips to import into Photos"
+            return
+        }
+        importNext(pending)
+    }
+
+    private func importNext(_ urls: [URL]) {
+        guard let first = urls.first else { importingExisting = false; return }
+        saveToPhotos(first) {
+            // Stop retries if access is denied; retain every original file.
+            guard PHPhotoLibrary.authorizationStatus(for: .addOnly) == .authorized else {
+                self.importingExisting = false
+                return
+            }
+            self.importNext(Array(urls.dropFirst()))
+        }
+    }
 
     let session = AVCaptureSession()
     var onCameraEvent: ((String) -> Void)?
@@ -279,6 +352,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
                     didStartRecordingTo fileURL: URL,
                     from connections: [AVCaptureConnection]) {
         DispatchQueue.main.async {
+            self.recordingStartedAt = Date()
             self.isRecording = true
             self.cameraStatus = "Recording"
             self.onCameraEvent?("REC:1")
@@ -291,6 +365,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
                     error: Error?) {
         captureQueue.async { self.recordingPending = false }
         DispatchQueue.main.async {
+            self.recordingStartedAt = nil
             self.isRecording = false
             self.onCameraEvent?("REC:0")
             if let error = error, !((error as NSError).userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool ?? false) {
@@ -301,6 +376,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
                 self.cameraStatus = "Saved to Files > On My iPhone > iPhone BLE Camera"
                 self.onCameraEvent?("REC:0")
                 self.onCameraEvent?("OK:SAVED")
+                self.saveToPhotos(outputFileURL)
             }
         }
     }
