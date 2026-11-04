@@ -324,8 +324,8 @@ class CameraRemoteApp(tk.Tk):
         return button
 
     def _build_ui(self):
-        self.columnconfigure(0, weight=7)
-        self.columnconfigure(1, weight=3)
+        self.columnconfigure(0, weight=2, uniform="studio")
+        self.columnconfigure(1, weight=1, uniform="studio")
         self.rowconfigure(1, weight=1)
         header = tk.Frame(self, bg=COLORS["background"], padx=28, pady=20)
         header.grid(row=0, column=0, columnspan=2, sticky="ew")
@@ -409,7 +409,7 @@ class CameraRemoteApp(tk.Tk):
         log = tk.Frame(side, bg=COLORS["panel"], padx=20, pady=16)
         log.grid(row=1, column=0, sticky="nsew")
         self._label(log, "ACTIVITY & SAVE STATUS", 12, bold=True).pack(anchor="w")
-        self.log_box = tk.Text(log, height=5, bg="#0c1524", fg="#d3e5f1", font=("Consolas", 10),
+        self.log_box = tk.Text(log, height=5, width=24, bg="#0c1524", fg="#d3e5f1", font=("Consolas", 10),
                                bd=0, state="disabled", wrap="word")
         self.log_box.pack(fill="both", expand=True, pady=12)
         tk.Label(log, textvariable=self.info_var, anchor="w", justify="left", wraplength=380,
@@ -452,6 +452,8 @@ class CameraRemoteApp(tk.Tk):
         tk.Label(parent, textvariable=self.confirmed_quality, bg=COLORS["panel"], fg=COLORS["accent"],
                  anchor="w", wraplength=600, font=("Segoe UI", 11, "bold")).pack(fill="x", pady=(8, 0))
         self._label(parent, "Preview stays low-resolution; recording quality is confirmed above.", 10, COLORS["muted"]).pack(anchor="w")
+        tk.Label(parent, textvariable=self.clip_quality, bg=COLORS["panel"], fg=COLORS["accent"],
+                 anchor="w", font=("Segoe UI", 10)).pack(fill="x", pady=(4, 0))
         self._label(parent, "Android: open the same link in Chrome. Enable Wi-Fi remote controls on iPhone.", 10, COLORS["muted"]).pack(anchor="w", pady=(10, 0))
 
     def _start_preview(self):
