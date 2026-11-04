@@ -420,7 +420,11 @@ class CameraRemoteApp(tk.Tk):
         self._set_controls()
 
     def _build_preview(self, parent):
-        self._label(parent, "Live viewfinder", 21, bold=True).pack(anchor="w")
+        title_row = tk.Frame(parent, bg=COLORS["panel"])
+        title_row.pack(fill="x")
+        self._label(title_row, "Live viewfinder", 21, bold=True).pack(side="left")
+        tk.Label(title_row, textvariable=self.timer_var, font=("Consolas", 21),
+                 bg=COLORS["panel"], fg=COLORS["accent"]).pack(side="right")
         self._label(parent, "Same Wi-Fi · Framing preview · Recordings stay on iPhone", 10, COLORS["muted"]).pack(anchor="w", pady=(4, 12))
         tk.Entry(parent, textvariable=self.preview_address, font=("Segoe UI", 11), bg="#0b1420", fg=COLORS["foreground"], insertbackground=COLORS["accent"], relief="flat", highlightthickness=1, highlightbackground=COLORS["border"]).pack(fill="x", ipady=8)
         controls = tk.Frame(parent, bg=COLORS["panel"])
@@ -429,7 +433,10 @@ class CameraRemoteApp(tk.Tk):
         self._button(controls, "Stop preview", self._stop_preview).pack(side="left")
         tk.Label(parent, textvariable=self.preview_status, bg=COLORS["panel"], fg=COLORS["accent"],
                  font=("Segoe UI", 11), wraplength=600, justify="left").pack(fill="x", pady=(0, 10))
-        self.preview_label = tk.Label(parent, bg="#050a12", fg="white", text="Your live viewfinder\n\nEnable Wi-Fi preview on iPhone, then connect above.",
+        preview_surface = tk.Frame(parent, bg="#050a12", height=1, width=1)
+        preview_surface.pack(fill="both", expand=True)
+        preview_surface.pack_propagate(False)
+        self.preview_label = tk.Label(preview_surface, bg="#050a12", fg="white", text="Your live viewfinder\n\nEnable Wi-Fi preview on iPhone, then connect above.",
                                      font=("Segoe UI", 14))
         self.preview_label.pack(fill="both", expand=True)
         live_controls = tk.Frame(parent, bg=COLORS["panel"])
