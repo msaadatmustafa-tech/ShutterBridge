@@ -3,5 +3,9 @@ Service/command/status UUIDs are defined in both clients. Commands are ASCII wri
 Status notifications are UTF-8 newline-delimited messages fragmented at the central MTU. Windows reassembles before parsing. Both apps must be upgraded together. GATT write success is transport acknowledgement; OK/ERR messages report application outcomes. REC:1 confirms recording; OK:STARTING alone does not.
 The PIN is an application access gate, not encrypted Bluetooth pairing. Use only in a trusted nearby environment. Foreground loss revokes authorization. Reconnect and authenticate again. Video never travels over BLE.
 
-## Optional Wi-Fi service (v1.3)
-User-enabled local HTTP listener with random per-enable access key in query. GET / returns embedded browser remote; GET /frame returns a fresh JPEG or HTTP 503; POST /command accepts a whitelisted plain-text command and returns application status. All routes require the key. STATUS is read-only; camera mutations additionally require the visible Wi-Fi remote toggle. Leaving foreground stops connections and revokes the key. Windows native controls continue over BLE; Android/laptop browser controls use this explicit opt-in service.
+## Optional Wi-Fi service (v1.5)
+User-enabled local HTTP listener with random per-enable access key in query. GET / returns embedded browser remote; GET /frame returns a fresh JPEG or HTTP 503; POST /command accepts a whitelisted plain-text command and returns application status. All routes require the key. STATUS is read-only; camera mutations additionally require the visible Wi-Fi remote toggle. Leaving foreground pauses connections; returning resumes the same key/port. Explicit Wi-Fi Off revokes the key. Windows native controls continue over BLE; Android/laptop browser controls use this explicit opt-in service.
+
+
+## Confirmed recording status (v1.5)
+`STATUS` includes READY, REC, BUSY, MODE, CAM, CAPS, WIDTH, HEIGHT, FPS, ZOOM and LAST. Wi-Fi adds REMOTE and SAVE. CAPS is specific to the active camera; WIDTH/HEIGHT/FPS reflect the active format. LAST and `CLIP:` report saved-file metadata. Selected quality is client UI state until OK:MODE is received. Do not treat OK:STARTING as confirmed recording; wait for REC:1. Stop & Save must finish before camera/format changes.

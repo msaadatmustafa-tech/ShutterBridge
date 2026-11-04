@@ -1,51 +1,39 @@
-# Windows + iPhone — Mac ke baghair installation
+# ShutterBridge — Windows + iPhone, Mac ke baghair
 
-**Aapko chahiye:** Windows 10/11 laptop, iPhone (iOS 16+), USB cable, GitHub account, Apple ID, aur Windows Bluetooth LE. Recording controller **local Bluetooth** par chalega. Sirf app ka initial build GitHub cloud par hoga. Apple ID ko GitHub par **kabhi upload mat karein**.
+## 1. Downloads
 
-## Step 1: iPhone app ko GitHub par build karein
+[Latest release](https://github.com/msaadatmustafa-tech/ShutterBridge/releases/latest) se Windows EXE aur **unsigned** iPhone IPA download karein. Source ZIP bhi available hai. Agar apna iPhone build banana hai to repository fork karein → Actions enable karein → **Build iPhone IPA (no Mac required) → Run workflow** → successful run se IPA artifact download/extract karein.
 
-1. Download ZIP, **Extract All**.
-2. Windows par [GitHub Desktop](https://desktop.github.com/) install karke GitHub mein sign in karein.
-3. GitHub Desktop: **File > Add local repository** se extracted `iPhone-BLE-Camera-Remote` folder select karein. Agar ye Git repository nahi hai, **create a repository here** choose karein (ya File > New repository karke contents us mein copy karein).
-4. Saari files including hidden `.github/workflows/build-ios-ipa.yml` commit karein. GitHub Desktop mein **Publish repository** click karein. **Keep this code private** select kar sakte hain (private GitHub Actions minutes par account usage/billing limits apply ho sakte hain).
-5. GitHub website par apni repository open karein. **Actions > Build iPhone IPA (no Mac required) > Run workflow** click karein. `main` branch choose karein.
-6. Build green/successful ho jaye, run open karein, neeche **Artifacts > iPhoneBLECamera-unsigned-IPA** se ZIP download karein.
-7. Download ki hui artifact ZIP extract karein. Andar `iPhoneBLECamera-unsigned.ipa` milegi. **Yeh unsigned hai: direct iPhone par nahi chalegi.**
+## 2. iPhone app install karein
 
-**Agar GitHub Actions mein workflow nazar nahi aaye:** check karein `.github/workflows/build-ios-ipa.yml` repository mein commit hui hai, default branch `main` hai, aur Actions enabled hain.
+1. [Official Sideloadly](https://sideloadly.io/) install karein aur uski Windows driver/dependency instructions follow karein.
+2. iPhone USB se connect, unlock aur **Trust This Computer** accept karein.
+3. Sideloadly mein iPhone aur downloaded unsigned IPA select karein.
+4. Apni Apple ID aur authentication sirf local installer mein enter karein. Password, signing key aur provisioning profile kabhi GitHub par upload na karein.
+5. Install ke baad agar iPhone trust/developer-mode prompt de to usay phone par complete karein. Signing expire hone par local installer se refresh karna par sakta hai; [official FAQ](https://sideloadly.io/faq.php) dekhein.
+6. **iPhone BLE Camera** kholein. Camera/Bluetooth allow karein. Audio ke liye Microphone aur Gallery save ke liye Add Photos allow karein. App foreground mein aur phone unlocked rakhein.
 
-**Agar build fail ho:** Action run ke red failed step par click karke error dekhein. Native iOS build yahan test nahi hua, isliye project mein device/Xcode-specific fixes zaroori ho sakte hain.
+Update se pehle Files se recordings ka backup lein. Same Apple ID aur bundle ID se existing app par update karein.
 
-## Step 2: Windows se iPhone mein IPA install karein
+## 3. Windows remote connect karein
 
-1. Official website: [Sideloadly](https://sideloadly.io/). Windows version download/install karein. Sideloadly ki Windows requirements follow karein (website ke mutabiq web-version iTunes/iCloud ki zaroorat ho sakti hai).
-2. iPhone ko USB cable se Windows laptop se connect karein. Phone unlock karke **Trust This Computer** allow karein.
-3. Sideloadly mein iPhone select karein aur `iPhoneBLECamera-unsigned.ipa` drop karein.
-4. **Apni Apple ID sirf installer ki local app mein dein; na humein, na GitHub repo/workflow mein.** Signing/installation complete karein.
-5. Agar prompt aaye, iPhone **Settings > Privacy & Security > Developer Mode** ON karein aur restart/confirmation complete karein.
-6. Agar *Untrusted Developer* aaye, **Settings > General > VPN & Device Management** mein developer app trust karein (menus iOS version ke hisab se differ kar sakte hain).
-7. iPhone par **iPhone BLE Camera** app open karein. Camera, microphone, Bluetooth permissions allow karein. Screen par 6-digit PIN show hoga.
+1. Downloaded EXE kholein. Source use karna ho to Python 3.11+ with Tkinter install karke `Windows/START_WINDOWS.bat` chalayein.
+2. Dono devices par Bluetooth on → **Scan for iPhone** → `iPhoneCam` → phone ka six-digit PIN → **Connect**.
+3. Recording stopped ho to quality choose → **Apply quality** → confirmed dimensions/FPS check karein. Supported modes selected front/back camera par depend karte hain.
+4. **Start** → **Stop & Save** → save complete hone dein. Video Photos/Gallery mein aur backup Files mein hogi.
 
-**Free Apple ID limitation:** Personal signing normally **7 din** valid hoti hai; Sideloadly se refresh/reinstall karna hoga. Free accounts par simultaneous sideloaded-app limit bhi lag sakti hai. Ye recording ki duration limit nahi hai. App use karne ke liye jailbreak zaroori nahi.
+## 4. Live preview aur Android
 
-## Step 3: Laptop se record karein
+Same trusted Wi-Fi par iPhone mein **Enable Wi-Fi preview** on karein aur Local Network allow karein. Windows **LIVE PREVIEW** mein poora link paste karke Connect preview karein. Native desktop buttons ke liye Bluetooth connect hona zaroori hai.
 
-1. Windows folder mein `START_WINDOWS.bat` double-click karein. Agar Python missing hai to [python.org](https://www.python.org/downloads/windows/) se Python install karein.
-2. iPhone app **foreground mein aur phone unlocked** rakhein. Dono devices par Bluetooth on ho.
-3. Laptop controller > **Scan for iPhone** > `iPhoneCam` choose karein > iPhone ka 6-digit PIN enter karein > **Connect**.
-4. 4K30 / 4K60 / 1080P30 / 1080P60 etc. select karein aur **Apply Quality** click karein. Mode tabhi chalega jab iPhone camera usay support kare.
-5. **START RECORDING** aur baad mein **STOP RECORDING**. Video iPhone Files app / app Documents mein save hogi; zaroorat par USB se laptop par copy karein.
+Android ke liye **Allow Wi-Fi remote controls** on karein, iPhone ka QR scan karein aur Chrome mein page kholein. Android APK ki zaroorat nahi. [Detailed Wi-Fi guide](WIFI_ANDROID_SETUP.md).
 
-### Zaroori limitations
+## Yaad rakhein
 
-- **Bluetooth par 4K live laptop preview nahin hai.** Bluetooth sirf commands ke liye; original 4K clip iPhone par locally record hogi.
-- **Unlimited ka matlab app mein clip ki fixed time limit nahi.** Storage, iPhone temperature/battery, permissions aur iOS interruption recording ko stop kar sakte hain.
-- Bluetooth control ke liye internet nahi chahiye. GitHub Actions build aur first-time Windows dependency installation ke liye internet chahiye.
-- Native iOS project ka code available hai magar **is package ko physical iPhone par abhi test nahi kiya gaya**, aur `.ipa` already generated ya signed nahi hai.
+- Bluetooth par video nahi jaati; original clip iPhone par record hoti hai.
+- Preview ki quality kam hai; saved recording quality ka confirmed status alag hai.
+- App ka duration timer cutoff nahi; storage, temperature, battery aur iOS interruptions limits hain.
+- Foreground/unlocked operation required. Background/lock se capture band hoti hai.
+- Live link aur PIN private rakhein. Wi-Fi preview Off se link revoke hota hai.
 
-## Verified sources
-
-- GitHub macOS runners: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
-- Downloading GitHub Actions artifacts: https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts
-- Sideloadly download: https://sideloadly.io/
-- Sideloadly free Apple ID FAQ: https://sideloadly.io/faq
+Real hardware test results: [Verification](VERIFICATION_AND_INSTALL.md).
