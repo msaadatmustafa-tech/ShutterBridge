@@ -31,9 +31,9 @@ COMMAND_UUID = "e919bc34-11b2-4bea-b102-dc37195206ae"
 STATUS_UUID = "e919bc34-11b2-4bea-b102-dc37195206af"
 
 COLORS = {
-    "background": "#101827", "panel": "#192539", "border": "#35465f",
-    "foreground": "#f0f5fb", "muted": "#a6b5c8", "accent": "#55e6ae",
-    "blue": "#399ceb", "warning": "#edb65d", "red": "#ec6d7a",
+    "background": "#080d15", "panel": "#111b2a", "border": "#2a394d",
+    "foreground": "#f5f7fa", "muted": "#a3b3c7", "accent": "#6fecc5",
+    "blue": "#6fecc5", "warning": "#f1c66d", "red": "#f06680",
 }
 
 
@@ -251,11 +251,27 @@ class PreviewWorker:
 class CameraRemoteApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("iPhone 4K BLE Camera — Laptop Remote")
+        self.title("Camera Studio — iPhone Remote")
         self.geometry("1280x800")
         self.minsize(980, 650)
         self.state("zoomed")
         self.configure(bg=COLORS["background"])
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("TNotebook", background=COLORS["background"], borderwidth=0)
+        style.configure("TNotebook.Tab", background=COLORS["panel"], foreground=COLORS["muted"],
+                        padding=(20, 12), font=("Segoe UI", 11, "bold"), borderwidth=0)
+        style.map("TNotebook.Tab", background=[("selected", COLORS["accent"])],
+                  foreground=[("selected", COLORS["background"])])
+        style.configure("TCombobox", fieldbackground="#0b1420", background=COLORS["border"],
+                        foreground=COLORS["foreground"], arrowcolor=COLORS["accent"], padding=7,
+                        font=("Segoe UI", 11), bordercolor=COLORS["border"])
+        style.map("TCombobox", fieldbackground=[("readonly", "#0b1420")],
+                  foreground=[("readonly", COLORS["foreground"])],
+                  selectbackground=[("readonly", "#0b1420")], selectforeground=[("readonly", COLORS["foreground"])])
+        self.option_add("*TCombobox*Listbox.background", COLORS["panel"])
+        self.option_add("*TCombobox*Listbox.foreground", COLORS["foreground"])
+        self.option_add("*TCombobox*Listbox.selectBackground", COLORS["border"])
         self.events: queue.Queue = queue.Queue()
         self.worker = BluetoothWorker(self.events)
         self.devices: list[Device] = []
@@ -302,18 +318,21 @@ class CameraRemoteApp(tk.Tk):
     def _button(self, parent, text, action, primary=False, width=None):
         button = tk.Button(parent, text=text, command=action,
                            bg=COLORS["blue"] if primary else "#31445f",
-                           fg="white", activebackground="#428dc7",
+                           fg=COLORS["background"] if primary else COLORS["foreground"], activebackground="#3b806f" if primary else COLORS["border"],
                            activeforeground="white", bd=0, padx=16, pady=9,
                            cursor="hand2", font=("Segoe UI", 10, "bold"), width=width)
         return button
 
     def _build_ui(self):
-        self.columnconfigure(0, weight=3)
-        self.columnconfigure(1, weight=2)
+        self.columnconfigure(0, weight=7)
+        self.columnconfigure(1, weight=3)
         self.rowconfigure(1, weight=1)
         header = tk.Frame(self, bg=COLORS["background"], padx=28, pady=20)
         header.grid(row=0, column=0, columnspan=2, sticky="ew")
-        self._label(header, "CAMERA REMOTE", 24, bold=True).pack(side="left")
+        brand = tk.Frame(header, bg=COLORS["background"])
+        brand.pack(side="left")
+        self._label(brand, "CAMERA / STUDIO", 23, bold=True).pack(anchor="w")
+        self._label(brand, "Your frame. Your controls. On your iPhone.", 10, COLORS["muted"]).pack(anchor="w", pady=(3, 0))
         tk.Label(header, textvariable=self.state_var, font=("Segoe UI", 12, "bold"),
                  bg=COLORS["background"], fg=COLORS["accent"]).pack(side="right")
         notebook = ttk.Notebook(self)
@@ -323,6 +342,7 @@ class CameraRemoteApp(tk.Tk):
         live = tk.Frame(notebook, bg=COLORS["panel"], padx=16, pady=16)
         notebook.add(live, text="  LIVE PREVIEW  ")
         self._build_preview(live)
+        notebook.select(live)
         self._label(main, "RECORDING DASHBOARD", 12, COLORS["muted"], True).pack(anchor="w")
         self.recording_label = tk.Label(main, textvariable=self.recording_var, anchor="w",
             font=("Segoe UI", 20, "bold"), bg=COLORS["panel"], fg=COLORS["foreground"])
@@ -334,7 +354,7 @@ class CameraRemoteApp(tk.Tk):
         action.pack(fill="x", pady=14)
         action.columnconfigure((0, 1), weight=1)
         self.start_btn = self._button(action, "START RECORDING", lambda: self._command("START"), primary=True)
-        self.start_btn.configure(font=("Segoe UI", 14, "bold"), pady=14, bg="#b52c45")
+        self.start_btn.configure(font=("Segoe UI", 14, "bold"), pady=14, bg="#c73350", fg="white")
         self.start_btn.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.stop_btn = self._button(action, "STOP & SAVE", lambda: self._command("STOP"))
         self.stop_btn.configure(font=("Segoe UI", 14, "bold"), pady=14)
@@ -400,16 +420,16 @@ class CameraRemoteApp(tk.Tk):
         self._set_controls()
 
     def _build_preview(self, parent):
-        self._label(parent, "LIVE iPHONE CAMERA", 18, bold=True).pack(anchor="w")
+        self._label(parent, "Live viewfinder", 21, bold=True).pack(anchor="w")
         self._label(parent, "Same Wi-Fi · Framing preview · Recordings stay on iPhone", 10, COLORS["muted"]).pack(anchor="w", pady=(4, 12))
-        tk.Entry(parent, textvariable=self.preview_address, font=("Segoe UI", 11)).pack(fill="x", ipady=8)
+        tk.Entry(parent, textvariable=self.preview_address, font=("Segoe UI", 11), bg="#0b1420", fg=COLORS["foreground"], insertbackground=COLORS["accent"], relief="flat", highlightthickness=1, highlightbackground=COLORS["border"]).pack(fill="x", ipady=8)
         controls = tk.Frame(parent, bg=COLORS["panel"])
         controls.pack(fill="x", pady=10)
         self._button(controls, "Connect preview", self._start_preview, primary=True).pack(side="left", padx=(0, 10))
         self._button(controls, "Stop preview", self._stop_preview).pack(side="left")
         tk.Label(parent, textvariable=self.preview_status, bg=COLORS["panel"], fg=COLORS["accent"],
                  font=("Segoe UI", 11), wraplength=600, justify="left").pack(fill="x", pady=(0, 10))
-        self.preview_label = tk.Label(parent, bg="#050a12", fg="white", text="Live camera will appear here",
+        self.preview_label = tk.Label(parent, bg="#050a12", fg="white", text="Your live viewfinder\n\nEnable Wi-Fi preview on iPhone, then connect above.",
                                      font=("Segoe UI", 14))
         self.preview_label.pack(fill="both", expand=True)
         live_controls = tk.Frame(parent, bg=COLORS["panel"])

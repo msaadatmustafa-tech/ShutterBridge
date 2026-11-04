@@ -156,7 +156,7 @@
             buildSettings = {
                 ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
                 CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 7;
+                CURRENT_PROJECT_VERSION = 8;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = iPhoneBLECamera/Info.plist;
                 INFOPLIST_KEY_CFBundleDisplayName = "iPhone BLE Camera";
@@ -188,7 +188,7 @@
             buildSettings = {
                 ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
                 CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 7;
+                CURRENT_PROJECT_VERSION = 8;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = iPhoneBLECamera/Info.plist;
                 INFOPLIST_KEY_CFBundleDisplayName = "iPhone BLE Camera";
