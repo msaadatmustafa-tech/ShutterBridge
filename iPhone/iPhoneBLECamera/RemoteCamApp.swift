@@ -18,6 +18,7 @@ struct ContentView: View {
     @ObservedObject var bluetooth: BluetoothService
     @Environment(\.scenePhase) private var scenePhase
     @State private var didInitialize = false
+    @State private var showFullScreen = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -42,6 +43,8 @@ struct ContentView: View {
                             .padding(12).background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 10))
                             .foregroundStyle(.white).padding(12)
                         }
+                    Button("Open full-screen camera") { showFullScreen = true }
+                        .buttonStyle(.bordered).frame(minHeight: 44)
                     Text(camera.cameraStatus).font(.headline)
                     HStack(spacing: 12) {
                         Button("START RECORDING") { camera.execute("START") { bluetooth.send($0) } }
@@ -76,6 +79,53 @@ struct ContentView: View {
                 }
                 .padding(16)
             }
+        }
+        .fullScreenCover(isPresented: $showFullScreen) {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                CameraPreview(session: camera.session).ignoresSafeArea()
+                VStack {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(camera.isRecording ? "● RECORDING" : "STANDBY")
+                                .font(.headline)
+                            Text("\(camera.currentMode) · \(camera.cameraSide)").font(.caption)
+                        }
+                        Spacer()
+                        Button("Dashboard") { showFullScreen = false }
+                            .buttonStyle(.bordered).frame(minHeight: 44)
+                    }
+                    .padding(14).background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 14))
+                    Spacer()
+                    VStack(spacing: 12) {
+                        if let start = camera.recordingStartedAt {
+                            Text(start, style: .timer).font(.system(size: 42, weight: .bold, design: .monospaced))
+                        }
+                        Text(camera.isRecording ? "Recording on this iPhone" : camera.cameraStatus)
+                            .font(.headline).multilineTextAlignment(.center)
+                        HStack(spacing: 12) {
+                            Button("START") { camera.execute("START") { bluetooth.send($0) } }
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .background(.red, in: RoundedRectangle(cornerRadius: 12))
+                                .disabled(!camera.isReady || camera.isRecording)
+                            Button("STOP & SAVE") { camera.execute("STOP") { bluetooth.send($0) } }
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .background(.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
+                                .disabled(!camera.isRecording)
+                        }
+                        .buttonStyle(.plain).font(.headline)
+                        if !camera.isRecording {
+                            Text(camera.photosStatus).font(.caption).multilineTextAlignment(.center)
+                        }
+                    }
+                    .padding(16).background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 16))
+                }
+                .padding(16).foregroundStyle(.white)
+            }
+            .preferredColorScheme(.dark)
+        }
+        .onChange(of: camera.isRecording) { recording in
+            if recording { showFullScreen = true }
         }
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase) { phase in

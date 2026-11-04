@@ -156,7 +156,7 @@
             buildSettings = {
                 ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
                 CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 2;
+                CURRENT_PROJECT_VERSION = 3;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = iPhoneBLECamera/Info.plist;
                 INFOPLIST_KEY_CFBundleDisplayName = "iPhone BLE Camera";
@@ -172,7 +172,7 @@
                     "$(inherited)",
                     "@executable_path/Frameworks",
                 );
-                MARKETING_VERSION = 1.1;
+                MARKETING_VERSION = 1.2;
                 PRODUCT_BUNDLE_IDENTIFIER = com.example.iphoneblecamera;
                 PRODUCT_NAME = iPhoneBLECamera;
                 SUPPORTS_MACCATALYST = NO;
@@ -188,7 +188,7 @@
             buildSettings = {
                 ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
                 CODE_SIGN_STYLE = Automatic;
-                CURRENT_PROJECT_VERSION = 2;
+                CURRENT_PROJECT_VERSION = 3;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = iPhoneBLECamera/Info.plist;
                 INFOPLIST_KEY_CFBundleDisplayName = "iPhone BLE Camera";
@@ -204,7 +204,7 @@
                     "$(inherited)",
                     "@executable_path/Frameworks",
                 );
-                MARKETING_VERSION = 1.1;
+                MARKETING_VERSION = 1.2;
                 PRODUCT_BUNDLE_IDENTIFIER = com.example.iphoneblecamera;
                 PRODUCT_NAME = iPhoneBLECamera;
                 SUPPORTS_MACCATALYST = NO;
