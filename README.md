@@ -12,7 +12,45 @@
 
 A local-first, open-source **SayCheese alternative** for creators who want a remote viewfinder and camera controls while their iPhone does the recording. Independent project; not affiliated with SayCheese or Apple.
 
-[**Download v1.5**](https://github.com/msaadatmustafa-tech/ShutterBridge/releases/latest) · [Windows installation](WINDOWS_IPHONE_SETUP_ROMAN_URDU.md) · [Wi-Fi / Android guide](WIFI_ANDROID_SETUP.md) · [Verified results](VERIFICATION_AND_INSTALL.md) · [Report a bug](https://github.com/msaadatmustafa-tech/ShutterBridge/issues/new)
+<p align="center">
+  <a href="https://github.com/msaadatmustafa-tech/ShutterBridge/releases/download/v1.5.0/ShutterBridge-Windows-v1.5.exe"><img alt="Download Windows EXE" src="https://img.shields.io/badge/Windows-Download_EXE-6fecc5?style=for-the-badge"></a>
+  <a href="https://github.com/msaadatmustafa-tech/ShutterBridge/releases/download/v1.5.0/ShutterBridge-iPhone-v1.5-unsigned.ipa"><img alt="Download unsigned iPhone IPA" src="https://img.shields.io/badge/iPhone-Download_IPA-6fecc5?style=for-the-badge&amp;logo=apple&amp;logoColor=080d15"></a>
+  <a href="https://github.com/msaadatmustafa-tech/ShutterBridge/archive/refs/heads/main.zip"><img alt="Download latest source and guides" src="https://img.shields.io/badge/Source-Latest_ZIP-182638?style=for-the-badge&amp;logo=github"></a>
+</p>
+
+> **First time here?** For Windows control, download **both** the EXE and iPhone IPA. The IPA is **unsigned**: sign/install it with your own Apple ID using Sideloadly on Windows. Initial installation requires a USB data cable. Android uses the browser remote and needs **no APK**.
+
+[**A-to-Z English setup**](docs/GETTING_STARTED.md) · [Roman Urdu setup](WINDOWS_IPHONE_SETUP_ROMAN_URDU.md) · [Troubleshooting & FAQ](docs/GETTING_STARTED.md#troubleshooting) · [Verified tests](VERIFICATION_AND_INSTALL.md) · [Release notes](https://github.com/msaadatmustafa-tech/ShutterBridge/releases/latest)
+
+## Downloads
+
+| Package | Download | What it does |
+|---|---|---|
+| **Windows controller** | [Download EXE](https://github.com/msaadatmustafa-tech/ShutterBridge/releases/download/v1.5.0/ShutterBridge-Windows-v1.5.exe) | Desktop controls and optional viewfinder. No Python required for this binary. |
+| **iPhone companion** | [Download unsigned IPA](https://github.com/msaadatmustafa-tech/ShutterBridge/releases/download/v1.5.0/ShutterBridge-iPhone-v1.5-unsigned.ipa) | Native recording app, v1.5 / build 8. Personal signing required. |
+| **Latest source + guides** | [Download main ZIP](https://github.com/msaadatmustafa-tech/ShutterBridge/archive/refs/heads/main.zip) | Current source, Xcode project, English/Roman Urdu guides and workflows. |
+| **Versioned release source** | [Download v1.5.0 ZIP](https://github.com/msaadatmustafa-tech/ShutterBridge/releases/download/v1.5.0/ShutterBridge-v1.5.0-source.zip) | Fixed source snapshot used for the release; later documentation updates live on main. |
+| **Release checksums** | [SHA256SUMS.txt](https://github.com/msaadatmustafa-tech/ShutterBridge/releases/download/v1.5.0/SHA256SUMS.txt) | Verify the versioned EXE, IPA and release source ZIP. |
+
+The EXE and IPA are unsigned downloads. Opening the IPA directly on iPhone will not install it. Follow the [complete installation guide](docs/GETTING_STARTED.md#install-the-iphone-app-from-windows). No Apple password, certificate or provisioning profile is included.
+
+<details>
+<summary><strong>Contents — setup, controls, recordings and development</strong></summary>
+
+- [What you get](#what-you-get)
+- [Windows interface](#windows-interface)
+- [How it connects](#how-it-connects)
+- [Quick start](#quick-start)
+- [Complete installation and permissions](docs/GETTING_STARTED.md)
+- [Controls and quality selection](docs/GETTING_STARTED.md#controls-and-recording-quality)
+- [Photos, Files and export](docs/GETTING_STARTED.md#find-and-export-recordings)
+- [Troubleshooting and FAQ](docs/GETTING_STARTED.md#troubleshooting)
+- [Actual verification](#what-has-actually-been-verified)
+- [Requirements and limits](#requirements-and-limits)
+- [Build and contribute](#build-and-contribute)
+- [Privacy and security](#privacy-and-security)
+
+</details>
 
 If ShutterBridge helps your next shoot, **give the repository a ⭐**. Stars help other Windows + iPhone creators find it. Built by [@msaadatmustafa-tech](https://github.com/msaadatmustafa-tech).
 
@@ -25,6 +63,12 @@ If ShutterBridge helps your next shoot, **give the repository a ⭐**. Stars hel
 - **Local originals + Photos:** recordings stay on iPhone; the app saves to Photos when permitted and keeps a Files backup.
 - **No app-imposed duration limit:** available storage, power, temperature and iOS interruptions still limit recording.
 - **No Mac ownership required:** download the unsigned iPhone app or compile it using GitHub Actions, then sign/install locally from Windows.
+
+## Windows interface
+
+![ShutterBridge Windows Camera Studio dashboard before connecting](docs/images/windows-dashboard.jpg)
+
+*Windows Camera Studio dashboard during v1.5 development, shown before connecting. No personal footage, session PIN or access link is shown. The installed iPhone companion appears as “iPhone BLE Camera”.*
 
 ## How it connects
 
