@@ -15,6 +15,7 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
     @Published private(set) var cameraStatus = "Waiting for camera permission"
     @Published private(set) var isReady = false
     @Published private(set) var isRecording = false
+    @Published private(set) var actualFormatText = "Waiting for camera format confirmation"
     @Published private(set) var currentMode = "1080P30"
     @Published private(set) var cameraSide = "BACK"
     @Published private(set) var availableModes: [String] = []
@@ -365,8 +366,12 @@ final class CameraService: NSObject, ObservableObject, AVCaptureFileOutputRecord
             }
             let actual = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
             let fps = 1 / CMTimeGetSeconds(device.activeVideoMinFrameDuration)
-            return actual.width == mode.width && actual.height == mode.height &&
+            let matched = actual.width == mode.width && actual.height == mode.height &&
                 fps.isFinite && abs(fps - Double(mode.framesPerSecond)) < 0.1
+            DispatchQueue.main.async {
+                self.actualFormatText = "\(actual.width) × \(actual.height) · \(String(format: "%.2f", fps)) FPS" + (matched ? " · confirmed" : " · did not match requested mode")
+            }
+            return matched
         } catch {
             session.commitConfiguration()
             return false

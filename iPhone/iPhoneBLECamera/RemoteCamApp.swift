@@ -20,6 +20,21 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var didInitialize = false
     @State private var showFullScreen = false
+    @State private var selectedQuality = "1080P30"
+    @State private var localFeedback = "Select quality, then Apply while recording is stopped"
+
+    private func perform(_ command: String) {
+        camera.execute(command) { response in
+            bluetooth.send(response)
+            switch response {
+            case "ERR:STOP_RECORDING_FIRST": localFeedback = "Stop & Save and wait for saving to finish first."
+            case "ERR:UNSUPPORTED_MODE": localFeedback = "This camera does not support that quality."
+            case "ERR:MODE_APPLY_FAILED": localFeedback = "The format/FPS could not be applied. Check confirmed quality below."
+            case "ERR:CAMERA_NOT_READY": localFeedback = "Camera is not ready. Check Camera permission."
+            default: localFeedback = response.hasPrefix("OK:MODE:") ? "Quality applied: " + String(response.dropFirst(8)) : response
+            }
+        }
+    }
 
     private func wifiQR(_ address: String) -> UIImage? {
         guard !address.isEmpty, let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
@@ -56,12 +71,39 @@ struct ContentView: View {
                     Button("Open full-screen camera") { showFullScreen = true }
                         .buttonStyle(.bordered).frame(minHeight: 44)
                     Text(camera.cameraStatus).font(.headline)
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("RECORDING QUALITY & CAMERA").font(.headline)
+                        HStack {
+                            Picker("Video quality", selection: $selectedQuality) {
+                                ForEach(camera.availableModes, id: \.self) { mode in Text(mode).tag(mode) }
+                            }
+                            .pickerStyle(.menu).disabled(camera.isBusy || !camera.isReady)
+                            Spacer()
+                            Button("Apply quality") { perform("MODE:" + selectedQuality) }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(camera.isBusy || !camera.isReady || !camera.availableModes.contains(selectedQuality))
+                        }
+                        HStack {
+                            Button("Back") { perform("CAM:BACK") }.disabled(camera.isBusy || !camera.isReady)
+                            Button("Front") { perform("CAM:FRONT") }.disabled(camera.isBusy || !camera.isReady)
+                            Spacer()
+                            Button("1×") { perform("ZOOM:1") }.disabled(!camera.isReady)
+                            Button("2×") { perform("ZOOM:2") }.disabled(!camera.isReady)
+                        }
+                        .buttonStyle(.bordered).frame(minHeight: 44)
+                        Text("Confirmed: \(camera.currentMode) · \(camera.cameraSide)").font(.subheadline.bold())
+                        Text(camera.actualFormatText).font(.caption.monospaced())
+                        Text(localFeedback).font(.caption).foregroundStyle(.secondary)
+                        Text("Supported on this camera: \(camera.availableModes.joined(separator: ", "))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(14).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
                     HStack(spacing: 12) {
-                        Button("START RECORDING") { camera.execute("START") { bluetooth.send($0) } }
+                        Button("START RECORDING") { perform("START") }
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .background(.red, in: RoundedRectangle(cornerRadius: 12))
                             .disabled(!camera.isReady || camera.isBusy || camera.isRecording)
-                        Button("STOP & SAVE") { camera.execute("STOP") { bluetooth.send($0) } }
+                        Button("STOP & SAVE") { perform("STOP") }
                             .frame(maxWidth: .infinity, minHeight: 52)
                             .background(.gray.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
                             .disabled(!camera.isBusy && !camera.isRecording)
@@ -127,6 +169,19 @@ struct ContentView: View {
                             Text("\(camera.currentMode) · \(camera.cameraSide)").font(.caption)
                         }
                         Spacer()
+                        Menu("Settings") {
+                            Menu("Video quality") {
+                                ForEach(camera.availableModes, id: \.self) { mode in
+                                    Button(mode) { selectedQuality = mode; perform("MODE:" + mode) }
+                                        .disabled(camera.isBusy)
+                                }
+                            }
+                            Button("Back camera") { perform("CAM:BACK") }.disabled(camera.isBusy)
+                            Button("Front camera") { perform("CAM:FRONT") }.disabled(camera.isBusy)
+                            Button("1× zoom") { perform("ZOOM:1") }
+                            Button("2× zoom") { perform("ZOOM:2") }
+                        }
+                        .buttonStyle(.bordered).frame(minHeight: 44)
                         Button("Dashboard") { showFullScreen = false }
                             .buttonStyle(.bordered).frame(minHeight: 44)
                     }
@@ -139,11 +194,11 @@ struct ContentView: View {
                         Text(camera.isRecording ? "Recording on this iPhone" : camera.cameraStatus)
                             .font(.headline).multilineTextAlignment(.center)
                         HStack(spacing: 12) {
-                            Button("START") { camera.execute("START") { bluetooth.send($0) } }
+                            Button("START") { perform("START") }
                                 .frame(maxWidth: .infinity, minHeight: 56)
                                 .background(.red, in: RoundedRectangle(cornerRadius: 12))
                                 .disabled(!camera.isReady || camera.isBusy || camera.isRecording)
-                            Button("STOP & SAVE") { camera.execute("STOP") { bluetooth.send($0) } }
+                            Button("STOP & SAVE") { perform("STOP") }
                                 .frame(maxWidth: .infinity, minHeight: 56)
                                 .background(.white.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
                                 .disabled(!camera.isBusy && !camera.isRecording)
@@ -158,6 +213,10 @@ struct ContentView: View {
                 .padding(16).foregroundStyle(.white)
             }
             .preferredColorScheme(.dark)
+        }
+        .onChange(of: camera.currentMode) { mode in selectedQuality = mode }
+        .onChange(of: camera.availableModes) { modes in
+            if !modes.contains(selectedQuality) { selectedQuality = modes.contains(camera.currentMode) ? camera.currentMode : (modes.first ?? "1080P30") }
         }
         .onChange(of: camera.isRecording) { recording in
             if recording { showFullScreen = true }
